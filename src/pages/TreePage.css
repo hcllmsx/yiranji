@@ -1,0 +1,460 @@
+/* 家谱树页样式 */
+
+.tree-page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.tree-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-6);
+  background-color: var(--color-bg-card);
+  border-bottom: 1px solid var(--color-border-light);
+  z-index: 10;
+}
+
+.tree-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.tree-toolbar h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  margin: 0;
+}
+
+.tree-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.tree-container {
+  flex: 1;
+  background-color: var(--color-bg);
+  background-image:
+    radial-gradient(circle, oklch(90% 0.01 65) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* React Flow 覆盖样式 */
+.tree-container .react-flow__node {
+  cursor: pointer;
+}
+
+.tree-container .react-flow__edge-path {
+  stroke-width: 2;
+  transition: stroke 0.3s ease, stroke-width 0.3s ease, opacity 0.3s ease;
+}
+
+.tree-container .react-flow__controls {
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--color-border-light);
+  overflow: hidden;
+}
+
+.tree-container .react-flow__controls button {
+  border: none;
+  border-bottom: 1px solid var(--color-border-light);
+  background-color: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  width: 32px;
+  height: 32px;
+}
+
+.tree-container .react-flow__controls button:hover {
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.tree-container .react-flow__minimap {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-light);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+/* 自定义人物节点 */
+.tree-person-node {
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--color-bg-card);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  min-width: 120px;
+  text-align: center;
+  transition: all var(--transition-fast);
+  cursor: pointer;
+}
+
+.tree-person-node:hover {
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-2px);
+  border-color: var(--color-accent-light);
+}
+
+.tree-person-node.perspective {
+  border: 1.5px solid var(--color-border);
+  position: relative;
+  box-shadow: 0 0 0 2px oklch(58% 0.18 25 / 0.15), var(--shadow-md);
+}
+
+/* 用左侧 4px 宽的伪元素替代原本的单色性别左边框 */
+.tree-person-node.perspective::before {
+  content: '';
+  position: absolute;
+  top: -1.5px;
+  left: -1.5px;
+  bottom: -1.5px;
+  width: 4px;
+  background: linear-gradient(to bottom, #ff3366, #ff9933, #ffff33, #33cc66, #3399ff, #9933ff);
+  border-top-left-radius: var(--radius-md);
+  border-bottom-left-radius: var(--radius-md);
+  z-index: 5;
+}
+
+.tree-person-node.male {
+  border-left: 4px solid oklch(60% 0.12 250);
+}
+
+.tree-person-node.female {
+  border-left: 4px solid oklch(65% 0.15 350);
+}
+
+/* 主视角节点覆盖单色左边框 */
+.tree-person-node.perspective.male,
+.tree-person-node.perspective.female {
+  border-left: 1.5px solid var(--color-border) !important;
+}
+
+/* 关系提示气泡 */
+.tree-node-relation-badge {
+  position: absolute;
+  top: -38px;
+  left: 50%;
+  transform: translateX(-50%) translateY(5px);
+  background-color: var(--color-accent);
+  color: white;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 100;
+  pointer-events: none;
+}
+
+.tree-node-relation-badge::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 4px 4px 0;
+  border-style: solid;
+  border-color: var(--color-accent) transparent transparent;
+}
+
+.tree-person-node:hover .tree-node-relation-badge {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+
+.tree-node-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  margin: 0 auto var(--space-2);
+  overflow: hidden;
+  background-color: var(--color-bg-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  color: var(--color-text-tertiary);
+  border: 2px solid var(--color-border-light);
+}
+
+.tree-person-node.perspective .tree-node-avatar {
+  border-color: var(--color-accent);
+}
+
+.tree-node-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tree-node-name {
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  color: var(--color-text-primary);
+  font-weight: 500;
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
+.tree-node-lifespan {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.tree-node-perspective-tag {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  background-color: var(--color-accent);
+  border-radius: var(--radius-full);
+  color: white;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+}
+
+/* 空状态 */
+.tree-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--color-text-tertiary);
+}
+
+.tree-empty-icon {
+  font-size: 4rem;
+  margin-bottom: var(--space-4);
+  opacity: 0.4;
+}
+
+.tree-empty-title {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-3);
+}
+
+.tree-empty-desc {
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-6);
+  max-width: 300px;
+  text-align: center;
+}
+
+/* 右键菜单 */
+.context-menu {
+  position: fixed;
+  background-color: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-2);
+  z-index: 1000;
+  min-width: 160px;
+  animation: scaleIn 100ms ease;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--color-text-primary);
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  transition: background-color var(--transition-fast);
+}
+
+.context-menu-item:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.context-menu-divider {
+  height: 1px;
+  background-color: var(--color-border-light);
+  margin: var(--space-1) var(--space-2);
+}
+
+/* 坐标系及网格样式 */
+.tree-container.show-grid {
+  background-image: none; /* 隐藏默认 24px 斑点背景 */
+}
+
+.coordinate-axes-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1; /* 至于 canvas 之上但不能遮挡交互 */
+}
+
+.tree-node-coordinate {
+  position: absolute;
+  bottom: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--color-bg-contrast, #1e293b);
+  color: var(--color-text-contrast, #ffffff);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-family: monospace;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+  z-index: 10;
+  opacity: 0.9;
+  border: 1px solid var(--color-border-light, rgba(255,255,255,0.1));
+  transition: all var(--transition-fast);
+}
+
+.tree-node-coordinate.clickable {
+  cursor: pointer;
+  pointer-events: auto; /* 允许点击激活输入框 */
+}
+
+.tree-node-coordinate.clickable:hover {
+  background-color: var(--color-primary, #3b82f6);
+  color: #ffffff;
+  transform: translateX(-50%) scale(1.05);
+  box-shadow: 0 0 8px var(--color-primary-light, rgba(59, 130, 246, 0.4));
+}
+
+.tree-node-coordinate-input-container {
+  position: absolute;
+  bottom: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background-color: var(--color-bg-card, #ffffff);
+  border: 1px solid var(--color-border, #cbd5e1);
+  padding: 2px 4px;
+  border-radius: 6px;
+  box-shadow: var(--shadow-md);
+  z-index: 20;
+  pointer-events: auto;
+}
+
+.coordinate-input {
+  width: 42px;
+  border: 1px solid var(--color-border-light, #e2e8f0);
+  background-color: var(--color-bg, #f8fafc);
+  color: var(--color-text-primary, #0f172a);
+  font-family: monospace;
+  font-size: 10px;
+  padding: 1px 3px;
+  border-radius: 3px;
+  outline: none;
+  text-align: center;
+}
+
+.coordinate-input:focus {
+  border-color: var(--color-primary, #3b82f6);
+  background-color: var(--color-bg-card, #ffffff);
+}
+
+/* 隐藏 Chrome/Safari 的数字微调按钮 */
+.coordinate-input::-webkit-outer-spin-button,
+.coordinate-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* 隐藏 Firefox 的数字微调按钮 */
+.coordinate-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.coordinate-comma {
+  font-size: 10px;
+  color: var(--color-text-secondary, #64748b);
+  font-weight: bold;
+}
+
+.btn-coordinate-ok, .btn-coordinate-cancel {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: bold;
+  padding: 2px 4px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color var(--transition-fast);
+}
+
+.btn-coordinate-ok {
+  color: #10b981; /* 翡翠绿 */
+}
+
+.btn-coordinate-ok:hover {
+  background-color: #ecfdf5;
+}
+
+.btn-coordinate-cancel {
+  color: #ef4444; /* 玫瑰红 */
+}
+
+.btn-coordinate-cancel:hover {
+  background-color: #fef2f2;
+}
+
+/* 选中节点与其父母/子女/配偶之间连线的动态流动效果 */
+.edge-flow-forward .react-flow__edge-path,
+.edge-flow-forward.react-flow__edge-path {
+  stroke-dasharray: 8;
+  animation: flow-forward-anim 1.5s linear infinite !important;
+}
+
+@keyframes flow-forward-anim {
+  from {
+    stroke-dashoffset: 16;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.edge-flow-reverse .react-flow__edge-path,
+.edge-flow-reverse.react-flow__edge-path {
+  stroke-dasharray: 8;
+  animation: flow-reverse-anim 1.5s linear infinite !important;
+}
+
+@keyframes flow-reverse-anim {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: 16;
+  }
+}
+

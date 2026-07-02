@@ -1,0 +1,146 @@
+/* 人物列表页样式 */
+
+.persons-page {
+  padding: var(--space-8);
+  max-width: 1100px;
+  margin: 0 auto;
+  animation: fadeIn var(--transition-normal) ease;
+}
+
+.persons-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-6);
+}
+
+.persons-header h2 {
+  font-family: var(--font-display);
+}
+
+.persons-search {
+  position: relative;
+  margin-bottom: var(--space-6);
+}
+
+.persons-search input {
+  width: 100%;
+  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-10);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+  background-color: var(--color-bg-card);
+  color: var(--color-text-primary);
+  transition: all var(--transition-fast);
+}
+
+.persons-search input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px oklch(58% 0.18 25 / 0.1);
+}
+
+.persons-search .search-icon {
+  position: absolute;
+  left: var(--space-4);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-tertiary);
+}
+
+/* 人物卡片网格 */
+.persons-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-5);
+}
+
+.person-card {
+  background-color: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
+.person-card:hover {
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-3px);
+  border-color: var(--color-accent-light);
+}
+
+.person-card.perspective {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent-lighter);
+}
+
+.person-card-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-full);
+  margin: 0 auto var(--space-4);
+  overflow: hidden;
+  background-color: var(--color-bg-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  color: var(--color-text-tertiary);
+  border: 2px solid var(--color-border-light);
+}
+
+.person-card.perspective .person-card-avatar {
+  border-color: var(--color-accent);
+}
+
+.person-card-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.person-card-name {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  color: var(--color-text-primary);
+  margin-bottom: var(--space-1);
+  font-weight: 500;
+}
+
+.person-card-meta {
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+}
+
+.person-card-badge {
+  display: inline-flex;
+  margin-top: var(--space-2);
+}
+
+/* 添加人物卡片 */
+.person-card-add {
+  border: 2px dashed var(--color-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-base);
+  gap: var(--space-2);
+}
+
+.person-card-add:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.person-card-add .add-icon {
+  font-size: 2rem;
+}

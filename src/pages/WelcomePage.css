@@ -1,0 +1,259 @@
+/* 欢迎页样式 */
+
+.welcome-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  background-color: var(--color-bg);
+  position: relative;
+  overflow: hidden;
+}
+
+/* 背景装饰 */
+.welcome-page::before {
+  content: '';
+  position: absolute;
+  top: -20%;
+  right: -10%;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, oklch(58% 0.18 25 / 0.03) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.welcome-page::after {
+  content: '';
+  position: absolute;
+  bottom: -15%;
+  left: -5%;
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, oklch(58% 0.18 25 / 0.04) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.welcome-content {
+  text-align: center;
+  max-width: 600px;
+  animation: slideUp 600ms ease;
+  position: relative;
+  z-index: 1;
+  margin-top: -5vh; /* 整体往上移一些，改善视觉分布 */
+  user-select: none; /* 避免拖选页脚版本号时连带选中上方内容 */
+}
+
+.welcome-logo {
+  margin-bottom: var(--space-4);
+}
+
+.welcome-app-name {
+  font-family: var(--font-display);
+  font-size: 4rem;
+  color: var(--color-accent);
+  letter-spacing: 0.15em;
+  margin-bottom: var(--space-3);
+  font-weight: 700;
+  text-shadow: 0 2px 4px oklch(58% 0.18 25 / 0.1);
+}
+
+.welcome-tagline {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  color: var(--color-text-secondary);
+  letter-spacing: 0.3em;
+  margin-bottom: var(--space-12);
+  font-weight: 400;
+}
+
+.welcome-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-12);
+}
+
+.welcome-actions .btn {
+  min-width: 220px;
+}
+
+.welcome-btn-create {
+  background-color: var(--color-accent);
+  color: var(--color-text-inverse);
+  padding: var(--space-4) var(--space-10);
+  font-size: var(--text-lg);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 16px oklch(58% 0.18 25 / 0.3);
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-display);
+  letter-spacing: 0.1em;
+  transition: all var(--transition-normal);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.welcome-btn-create:hover {
+  background-color: var(--color-accent-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px oklch(58% 0.18 25 / 0.4);
+}
+
+.welcome-btn-open {
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  padding: var(--space-3) var(--space-8);
+  font-size: var(--text-base);
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--color-border);
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: all var(--transition-normal);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.welcome-btn-open:hover {
+  border-color: var(--color-accent-light);
+  color: var(--color-accent);
+  transform: translateY(-1px);
+}
+
+/* 最近项目 */
+.welcome-recent {
+  width: 100%;
+  max-width: 480px;
+  animation: fadeIn 800ms ease 200ms both;
+}
+
+.welcome-recent-title {
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  color: var(--color-text-tertiary);
+  margin-bottom: var(--space-4);
+  text-align: left;
+  letter-spacing: 0.05em;
+}
+
+.welcome-recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.welcome-recent-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  background-color: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  text-align: left;
+  width: 100%;
+}
+
+/* 最近项目项悬浮样式已转移至 Container 统领 */
+
+.welcome-recent-item-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background-color: var(--color-accent-lighter);
+  color: var(--color-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xl);
+  flex-shrink: 0;
+}
+
+.welcome-recent-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.welcome-recent-item-name {
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  color: var(--color-text-primary);
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.welcome-recent-item-date {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.welcome-recent-item-container {
+  transition: all var(--transition-normal);
+}
+
+.welcome-recent-item-container:hover {
+  transform: translateY(-2px);
+}
+
+.welcome-recent-item-container:hover .welcome-recent-item {
+  box-shadow: var(--shadow-hover);
+  border-color: var(--color-accent-light);
+}
+
+.welcome-recent-delete-btn {
+  opacity: 0;
+  pointer-events: none;
+  transition: all var(--transition-fast) ease !important;
+}
+
+.welcome-recent-item-container:hover .welcome-recent-delete-btn {
+  opacity: 0.5;
+  pointer-events: auto;
+}
+
+.welcome-recent-delete-btn:hover {
+  opacity: 1 !important;
+  transform: scale(1.2);
+  color: #ff3b30 !important; /* 精美的系统红色 */
+}
+
+/* 版本信息 */
+.welcome-version {
+  position: absolute;
+  bottom: var(--space-6);
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  letter-spacing: 0.05em;
+  user-select: text;
+}
+
+.welcome-version a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.welcome-version a:hover {
+  color: var(--color-accent);
+}
+
+/* 装饰纹理 */
+.welcome-decoration {
+  position: absolute;
+  top: var(--space-8);
+  right: var(--space-8);
+  font-size: 8rem;
+  opacity: 0.04;
+  font-family: var(--font-display);
+  color: var(--color-accent);
+  pointer-events: none;
+  user-select: none;
+  line-height: 1;
+}

@@ -1,0 +1,283 @@
+/* 头像裁剪弹窗 */
+
+.avatar-crop-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: oklch(0% 0 0 / 0.55);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn var(--transition-fast) ease;
+}
+
+.avatar-crop-modal {
+  background-color: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  width: 90%;
+  max-width: 820px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: scaleIn var(--transition-normal) cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.avatar-crop-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.avatar-crop-modal-header h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.avatar-crop-close-btn {
+  border: none;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.avatar-crop-close-btn:hover {
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.avatar-crop-body {
+  display: flex;
+  gap: var(--space-6);
+  padding: var(--space-6);
+  overflow-y: auto;
+}
+
+/* Tab 切换栏 */
+.avatar-crop-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid var(--color-border-light);
+  background-color: var(--color-bg-sidebar);
+}
+
+.avatar-crop-tab {
+  padding: var(--space-3) var(--space-5);
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  position: relative;
+  transition: color var(--transition-fast);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.avatar-crop-tab:hover {
+  color: var(--color-text-primary);
+}
+
+.avatar-crop-tab.active {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
+.avatar-crop-left {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  flex-shrink: 0;
+}
+
+.avatar-crop-container {
+  position: relative;
+  background-color: oklch(20% 0.01 65);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.avatar-crop-container:active {
+  cursor: grabbing;
+}
+
+.avatar-crop-image {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  max-width: none;
+  max-height: none;
+}
+
+/* 遮罩由裁剪框的 box-shadow 实现，此处 mask 仅作裁剪框外暗化兜底 */
+.avatar-crop-overlay-mask {
+  position: absolute;
+  inset: 0;
+  background: oklch(0% 0 0 / 0.5);
+  pointer-events: none;
+}
+
+.avatar-crop-circle-frame {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: var(--radius-full);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  /* 用巨大 spread 的 box-shadow 遮盖框外区域，形成裁剪蒙版 */
+  box-shadow: 0 0 0 9999px oklch(0% 0 0 / 0.5);
+  pointer-events: none;
+}
+
+.avatar-crop-rect-frame {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 0;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 0 9999px oklch(0% 0 0 / 0.5);
+  pointer-events: none;
+}
+
+.avatar-crop-hint {
+  position: absolute;
+  bottom: var(--space-2);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: var(--text-xs);
+  color: rgba(255, 255, 255, 0.85);
+  background-color: oklch(0% 0 0 / 0.5);
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.avatar-crop-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 320px;
+}
+
+.avatar-crop-zoom-label {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.avatar-crop-controls input[type='range'] {
+  flex: 1;
+  accent-color: var(--color-accent);
+}
+
+.avatar-crop-zoom-value {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  width: 40px;
+  text-align: right;
+}
+
+.avatar-crop-reset-btn {
+  border: 1px solid var(--color-border);
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  padding: 4px 10px;
+  font-size: var(--text-xs);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.avatar-crop-reset-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.avatar-crop-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.avatar-crop-preview-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.avatar-crop-preview-title {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.avatar-crop-preview-circle {
+  width: 100px;
+  height: 100px;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  background-color: var(--color-bg-hover);
+  border: 2px solid var(--color-border-light);
+}
+
+.avatar-crop-preview-circle img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-crop-preview-rect {
+  width: 120px;
+  /* 4:5 比例，与裁剪输出一致 */
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  background-color: var(--color-bg-hover);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+}
+
+.avatar-crop-preview-rect img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.avatar-crop-preview-desc {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+}
+
+.avatar-crop-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--color-border-light);
+  background-color: var(--color-bg-sidebar);
+}
+
+

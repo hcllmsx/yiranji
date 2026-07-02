@@ -1,0 +1,122 @@
+/* 设置页面样式 */
+
+.settings-page {
+  padding: var(--space-8);
+  max-width: 800px;
+  margin: 0 auto;
+  animation: fadeIn var(--transition-normal) ease;
+}
+
+.settings-header {
+  margin-bottom: var(--space-6);
+}
+
+.settings-header h2 {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.settings-section {
+  background-color: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-sm);
+}
+
+.settings-section-title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  color: var(--color-text-primary);
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border-light);
+  font-weight: 500;
+}
+
+.password-status-bar {
+  margin-bottom: var(--space-4);
+}
+
+.status-container {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+}
+
+.status-container.encrypted {
+  background-color: var(--color-accent-lighter);
+  border-color: var(--color-accent-light);
+  color: var(--color-accent);
+}
+
+.status-container.clear {
+  background-color: var(--color-bg-hover);
+  border-color: var(--color-border-light);
+  color: var(--color-text-secondary);
+}
+
+.status-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.status-text strong {
+  display: block;
+  font-size: var(--text-base);
+  margin-bottom: 2px;
+}
+
+.status-text p {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.danger-text-hover {
+  color: var(--color-text-secondary);
+  transition: color var(--transition-fast);
+}
+
+.danger-text-hover:hover {
+  color: var(--color-danger, #ef4444) !important;
+}
+
+/* 提示警示框 */
+.settings-alert-message {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1.5;
+  animation: fadeIn var(--transition-fast) ease;
+}
+
+.settings-alert-message.success {
+  background-color: oklch(95% 0.05 140);
+  border: 1px solid oklch(85% 0.1 140);
+  color: oklch(35% 0.15 140);
+}
+
+.settings-alert-message.error {
+  background-color: oklch(95% 0.05 20);
+  border: 1px solid oklch(85% 0.1 20);
+  color: oklch(45% 0.2 20);
+}
+
+.settings-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-4);
+}
