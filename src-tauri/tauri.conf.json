@@ -47,10 +47,9 @@
     ],
     "windows": {
       "nsis": {
-        "outputName": "以苒纪",
         "languages": [
-          "English",
-          "SimplifiedChinese"
+          "SimpChinese",
+          "English"
         ]
       }
     },
