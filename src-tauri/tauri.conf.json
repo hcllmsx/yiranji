@@ -49,8 +49,8 @@
       "nsis": {
         "outputName": "以苒纪",
         "languages": [
-          "SimpChinese",
-          "English"
+          "English",
+          "ChineseSimplified"
         ]
       }
     },
