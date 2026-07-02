@@ -21,6 +21,11 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Generate Cargo.lock
+        run: |
+          cd src-tauri
+          cargo generate-lockfile
+
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
