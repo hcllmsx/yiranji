@@ -7,6 +7,7 @@ import {
   isYrjFileEncrypted,
   selectProjectParentDir,
   createProjectWorkspace,
+  openUrl,
 } from '../utils/tauri';
 import './WelcomePage.css';
 
@@ -447,7 +448,13 @@ export default function WelcomePage() {
       </div>
 
       <div className="welcome-version">
-        <a href="https://github.com/hcllmsx/yiranji" target="_blank" rel="noopener noreferrer">以苒纪</a> v{__APP_VERSION__}
+        <span
+          onClick={() => openUrl('https://github.com/hcllmsx/yiranji')}
+          style={{ cursor: 'pointer' }}
+          role="link"
+        >
+          以苒纪
+        </span> v{__APP_VERSION__}
       </div>
 
       {/* 新建家谱模态框 */}

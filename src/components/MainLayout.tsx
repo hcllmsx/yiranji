@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useFamilyStore } from '../store/familyStore';
-import { isTauri } from '../utils/tauri';
+import { isTauri, openUrl } from '../utils/tauri';
 import MediaImportProgress from './MediaImportProgress';
 import './MainLayout.css';
 
@@ -98,14 +98,14 @@ export default function MainLayout() {
 
         {/* 侧边栏底部 */}
         <div className="sidebar-footer">
-          <a
-            href="https://github.com/hcllmsx/yiranji"
-            target="_blank"
-            rel="noopener noreferrer"
+          <span
             className="sidebar-github-link"
+            onClick={() => openUrl('https://github.com/hcllmsx/yiranji')}
+            style={{ cursor: 'pointer' }}
+            role="link"
           >
             <img src="/github.svg" alt="GitHub" className="sidebar-github-icon" />
-          </a>
+          </span>
         </div>
       </aside>
 

@@ -177,6 +177,18 @@ export function convertLocalSrc(path: string): string {
 }
 
 /**
+ * 使用系统默认浏览器打开外部链接（仅在 Tauri 环境下有效）
+ */
+export async function openUrl(url: string): Promise<void> {
+  if (isTauri()) {
+    const { open } = await import('@tauri-apps/plugin-shell');
+    await open(url);
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
+/**
  * 前端首屏加载就绪后，主动通知 Tauri 唤醒并显示主窗口
  */
 export async function showTauriWindow(): Promise<void> {

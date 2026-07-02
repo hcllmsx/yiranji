@@ -12,6 +12,7 @@
     "tauri": "node scripts/sync-version.mjs && tauri"
   },
   "dependencies": {
+    "@tauri-apps/plugin-shell": "^2.3.5",
     "@types/dagre": "^0.7.54",
     "@types/uuid": "^10.0.0",
     "@xyflow/react": "^12.11.1",

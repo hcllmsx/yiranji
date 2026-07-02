@@ -2,8 +2,6 @@
 
 一款现代化的家谱管理桌面应用，基于 Tauri v2 + React 构建。支持人物档案管理、家族树可视化等功能。
 
-![Tauri](https://img.shields.io/badge/Tauri-v2-blue?logo=tauri) ![React](https://img.shields.io/badge/React-19-61dafb?logo=react) ![TypeScript](https://img.shields.io/badge/TypeScript-6-3178c6?logo=typescript) ![License](https://img.shields.io/badge/License-MIT-green)
-
 ## 功能特性
 
 - **人物档案** — 管理家族成员信息，支持头像、生卒日期、出生地、生肖、农历等

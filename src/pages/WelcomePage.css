@@ -235,12 +235,14 @@
   user-select: text;
 }
 
-.welcome-version a {
+.welcome-version a,
+.welcome-version span[role="link"] {
   color: inherit;
   text-decoration: none;
 }
 
-.welcome-version a:hover {
+.welcome-version a:hover,
+.welcome-version span[role="link"]:hover {
   color: var(--color-accent);
 }
 
