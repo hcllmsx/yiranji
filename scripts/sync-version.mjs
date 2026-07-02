@@ -6,7 +6,7 @@ const rootDir = path.resolve(import.meta.dirname, '..');
 const versionPath = path.join(rootDir, 'VERSION');
 const version = fs.readFileSync(versionPath, 'utf8').trim();
 
-const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
+const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)...)?$/;
 
 if (!semverPattern.test(version)) {
   console.error(`Invalid VERSION value: "${version}". Expected semver like 0.1.2 or 2026.7.2; numeric parts cannot have leading zeroes.`);
@@ -79,9 +79,13 @@ fs.writeFileSync(
 );
 
 const cargoLockPath = path.join(rootDir, 'src-tauri', 'Cargo.lock');
-fs.writeFileSync(
-  cargoLockPath,
-  replaceCargoLockAppVersion(fs.readFileSync(cargoLockPath, 'utf8'), version)
-);
+if (fs.existsSync(cargoLockPath)) {
+  fs.writeFileSync(
+    cargoLockPath,
+    replaceCargoLockAppVersion(fs.readFileSync(cargoLockPath, 'utf8'), version)
+  );
+} else {
+  console.warn(`Warning: ${cargoLockPath} not found. It will be generated during the build process.`);
+}
 
 console.log(`Synced app version to ${version}.`);
