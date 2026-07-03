@@ -88,4 +88,15 @@ if (fs.existsSync(cargoLockPath)) {
   console.warn('src-tauri/Cargo.lock not found; skipping Cargo.lock version sync.');
 }
 
+const nsisHooksPath = path.join(rootDir, 'src-tauri', 'nsis-hooks.nsh');
+if (fs.existsSync(nsisHooksPath)) {
+  const replaced = fs.readFileSync(nsisHooksPath, 'utf8').replace(
+    /Caption "以苒纪 v[^"]*"/,
+    `Caption "以苒纪 v${version}"`
+  );
+  fs.writeFileSync(nsisHooksPath, replaced);
+} else {
+  console.warn('src-tauri/nsis-hooks.nsh not found; skipping NSIS hooks version sync.');
+}
+
 console.log(`Synced app version to ${version}.`);

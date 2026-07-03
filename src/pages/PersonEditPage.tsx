@@ -8,7 +8,6 @@ import {
   formatLunarDate,
   calculatePhotoAge,
   getFullName,
-  CHINESE_PROVINCES,
   getLunarLeapMonth,
   getSiblingRank,
 } from '../utils';
@@ -16,6 +15,7 @@ import { Lunar } from 'lunar-javascript';
 import { isTauri, convertLocalSrc } from '../utils/tauri';
 import AvatarCropModal from '../components/AvatarCropModal';
 import type { Person, Gender, LunarDate } from '../types';
+import chinaRegions from '../data/china-regions.json';
 import './PersonEditPage.css';
 
 // 产生年份列表 (1900 - 2030)
@@ -24,6 +24,10 @@ const YEARS = Array.from({ length: 131 }, (_, i) => 1900 + i);
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
 // 产生分钟/秒列表 (00 - 59)
 const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
+
+// 中国行政区划数据类型（省 → 市 → 县区 → 乡镇街道）
+type ChinaRegions = Record<string, Record<string, Record<string, string[]>>>;
+const REGIONS = chinaRegions as ChinaRegions;
 
 export default function PersonEditPage() {
   const { id } = useParams<{ id: string }>();
@@ -39,7 +43,12 @@ export default function PersonEditPage() {
   const [givenName, setGivenName] = useState('');
   const [gender, setGender] = useState<Gender>('male');
   const [isAlive, setIsAlive] = useState(true);
-  const [birthPlace, setBirthPlace] = useState('');
+  // 出生地拆分：省 / 市 / 县区 / 乡镇 / 详细地址
+  const [placeProvince, setPlaceProvince] = useState('');
+  const [placeCity, setPlaceCity] = useState('');
+  const [placeArea, setPlaceArea] = useState('');
+  const [placeTown, setPlaceTown] = useState('');
+  const [placeDetail, setPlaceDetail] = useState('');
   const [bio, setBio] = useState('');
   const [avatar, setAvatar] = useState<string | undefined>();
   const [avatarRect, setAvatarRect] = useState<string | undefined>();
@@ -179,7 +188,13 @@ export default function PersonEditPage() {
       setGivenName(existingPerson.givenName);
       setGender(existingPerson.gender);
       setIsAlive(existingPerson.isAlive);
-      setBirthPlace(existingPerson.birthPlace || '');
+      // 拆分出生地字符串到多级下拉框 + 详细地址
+      const parts = (existingPerson.birthPlace || '').split(' ');
+      setPlaceProvince(parts[0] || '');
+      setPlaceCity(parts[1] || '');
+      setPlaceArea(parts[2] || '');
+      setPlaceTown(parts[3] || '');
+      setPlaceDetail(parts.slice(4).join(' ') || '');
       setBio(existingPerson.bio || '');
       setAvatar(existingPerson.avatar);
       setAvatarRect(existingPerson.avatarRect);
@@ -294,6 +309,7 @@ export default function PersonEditPage() {
     setAvatarRect(undefined);
     setNewAvatarBase64(null);
     setNewAvatarRectBase64(null);
+    setAvatarPhotoDate('');
     setAvatarToDelete(true);
   };
 
@@ -526,7 +542,7 @@ export default function PersonEditPage() {
       deathDateSolar,
       deathTimePrecision,
       isAlive,
-      birthPlace: birthPlace || undefined,
+      birthPlace: [placeProvince, placeCity, placeArea, placeTown, placeDetail].filter(Boolean).join(' ') || undefined,
       bio: bio || undefined,
       avatar: finalAvatar,
       avatarRect: finalAvatarRect,
@@ -1141,30 +1157,98 @@ export default function PersonEditPage() {
 
         <div className="form-group">
           <label className="form-label">出生地</label>
-          <div className="form-row">
+          <div className="form-row" style={{ flexWrap: 'wrap' }}>
             <select
               className="form-input"
-              value={birthPlace.split(' ')[0] || ''}
+              value={placeProvince}
               onChange={(e) => {
-                const rest = birthPlace.split(' ').slice(1).join(' ');
-                setBirthPlace(e.target.value + (rest ? ' ' + rest : ''));
+                setPlaceProvince(e.target.value);
+                setPlaceCity('');
+                setPlaceArea('');
+                setPlaceTown('');
               }}
+              style={{ flex: '1 1 120px' }}
             >
-              <option value="">选择省份/地区</option>
-              {CHINESE_PROVINCES.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
+              <option value="">选择省份</option>
+              <option disabled>──────</option>
+              {Object.keys(REGIONS)
+                .filter(p => p !== '国外')
+                .map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              <option disabled>──────</option>
+              <option value="国外">国外</option>
             </select>
-            <input
-              type="text"
-              className="form-input"
-              value={birthPlace.split(' ').slice(1).join(' ')}
-              onChange={(e) => {
-                const province = birthPlace.split(' ')[0] || '';
-                setBirthPlace(province + (e.target.value ? ' ' + e.target.value : ''));
-              }}
-              placeholder="市/县/区（选填）"
-            />
+            {placeProvince === '国外' ? (
+              <input
+                type="text"
+                className="form-input"
+                value={placeDetail}
+                onChange={(e) => setPlaceDetail(e.target.value)}
+                placeholder="国家/地区 + 详细地址"
+                style={{ flex: '3 1 360px' }}
+              />
+            ) : (
+              <>
+                <select
+                  className="form-input"
+                  value={placeCity}
+                  onChange={(e) => {
+                    setPlaceCity(e.target.value);
+                    setPlaceArea('');
+                    setPlaceTown('');
+                  }}
+                  disabled={!placeProvince}
+                  style={{ flex: '1 1 120px' }}
+                >
+                  <option value="">选择市/州</option>
+                  <option disabled>──────</option>
+                  {placeProvince && REGIONS[placeProvince] &&
+                    Object.keys(REGIONS[placeProvince]).map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                </select>
+                <select
+                  className="form-input"
+                  value={placeArea}
+                  onChange={(e) => {
+                    setPlaceArea(e.target.value);
+                    setPlaceTown('');
+                  }}
+                  disabled={!placeCity}
+                  style={{ flex: '1 1 120px' }}
+                >
+                  <option value="">选择县/区</option>
+                  <option disabled>──────</option>
+                  {placeProvince && placeCity && REGIONS[placeProvince]?.[placeCity] &&
+                    Object.keys(REGIONS[placeProvince][placeCity]).map((a) => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
+                </select>
+                <select
+                  className="form-input"
+                  value={placeTown}
+                  onChange={(e) => setPlaceTown(e.target.value)}
+                  disabled={!placeArea}
+                  style={{ flex: '1 1 120px' }}
+                >
+                  <option value="">选择乡镇/街道</option>
+                  <option disabled>──────</option>
+                  {placeProvince && placeCity && placeArea &&
+                    REGIONS[placeProvince]?.[placeCity]?.[placeArea]?.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                </select>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={placeDetail}
+                  onChange={(e) => setPlaceDetail(e.target.value)}
+                  placeholder="详细地址（村/路/门牌号，选填）"
+                  style={{ flex: '2 1 240px' }}
+                />
+              </>
+            )}
           </div>
         </div>
       </div>

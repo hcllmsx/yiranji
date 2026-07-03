@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useFamilyStore } from '../store/familyStore';
+import { openDevtools } from '../utils/tauri';
 import './SettingsPage.css';
 
 export default function SettingsPage() {
@@ -188,6 +189,20 @@ export default function SettingsPage() {
             {message.text}
           </div>
         )}
+
+        {/* 开发者分区 */}
+        <div className="settings-section">
+          <div className="settings-section-title">开发者</div>
+          <div className="form-group">
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => openDevtools()}
+            >
+              🛠️ DevTools
+            </button>
+          </div>
+        </div>
 
         {/* 底部提交 */}
         <div className="settings-footer">

@@ -189,6 +189,19 @@ export async function openUrl(url: string): Promise<void> {
 }
 
 /**
+ * 打开 WebView 的 DevTools（类似浏览器 F12 控制台）
+ */
+export async function openDevtools(): Promise<void> {
+  if (isTauri()) {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('open_devtools');
+  } else {
+    // Web 环境下尝试用浏览器原生方式
+    console.log('DevTools 在 Web 环境下请按 F12 打开');
+  }
+}
+
+/**
  * 前端首屏加载就绪后，主动通知 Tauri 唤醒并显示主窗口
  */
 export async function showTauriWindow(): Promise<void> {

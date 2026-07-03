@@ -147,13 +147,20 @@ fn is_yrj_file_encrypted(path: String) -> Result<bool, String> {
     let mut file = fs::File::open(&path).map_err(|e| format!("打开文件失败: {}", e))?;
     let mut header = [0u8; 13];
     file.read_exact(&mut header).map_err(|e| format!("读取文件头失败: {}", e))?;
-    
+
     if &header[0..8] != b"YIRANJI\0" {
         return Err("无效的以苒纪工程文件格式".to_string());
     }
-    
+
     let flags = header[12];
     Ok((flags & 1) != 0)
+}
+
+#[tauri::command]
+fn open_devtools(app: tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        window.open_devtools();
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -192,7 +199,8 @@ pub fn run() {
             delete_media_file,
             pack_to_yrj,
             unpack_yrj,
-            is_yrj_file_encrypted
+            is_yrj_file_encrypted,
+            open_devtools
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

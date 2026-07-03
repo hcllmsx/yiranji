@@ -34,13 +34,23 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build and release
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Tauri app
+        run: npm run tauri build
+
+      - name: Rename bundle to ASCII filename
+        shell: pwsh
+        run: |
+          $bundleDir = "src-tauri/target/release/bundle/nsis"
+          $files = Get-ChildItem -Path $bundleDir -Filter "*-setup.exe"
+          foreach ($f in $files) {
+            $newName = "yiranji_${{ github.ref_name }}_x64-setup.exe"
+            Rename-Item -Path $f.FullName -NewName $newName
+            Write-Host "Renamed: $($f.Name) -> $newName"
+          }
+
+      - name: Create release and upload
+        uses: softprops/action-gh-release@v2
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: '以苒纪 ${{ github.ref_name }}'
-          releaseBody: 'See the assets below to download and install.'
-          releaseDraft: false
-          prerelease: false
+          name: '以苒纪 ${{ github.ref_name }}'
+          body: '见下方 Assets 下载安装包。'
+          files: src-tauri/target/release/bundle/nsis/yiranji_${{ github.ref_name }}_x64-setup.exe

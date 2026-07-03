@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "以苒纪",
-  "version": "26.7.2",
+  "version": "26.7.3",
   "identifier": "com.yiranji.app",
   "build": {
     "frontendDist": "../dist",
@@ -38,6 +38,7 @@
     "targets": [
       "nsis"
     ],
+    "copyright": "© 2026 hcllmsx",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -50,7 +51,8 @@
         "languages": [
           "SimpChinese",
           "English"
-        ]
+        ],
+        "installerHooks": "./nsis-hooks.nsh"
       }
     },
     "android": {
