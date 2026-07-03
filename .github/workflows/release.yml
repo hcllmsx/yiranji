@@ -49,7 +49,7 @@ jobs:
           }
 
       - name: Create release and upload
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: '以苒纪 ${{ github.ref_name }}'
           body: '见下方 Assets 下载安装包。'
