@@ -12,12 +12,15 @@ import {
   createDefaultPerson,
   createDefaultMeta as makeDefaultMeta,
 } from '../types';
-import { sha256 } from '../utils';
+import { sha256, generateAnonymizedNames } from '../utils';
 import {
   isTauri,
   saveYrjFile,
   selectFilePathForSave,
   saveProjectJson,
+  unpackYrj,
+  loadProjectJson,
+  packToYrj,
 } from '../utils/tauri';
 
 // ==================== 持久化工具 ====================
@@ -76,6 +79,10 @@ interface FamilyStore {
   currentFilePath: string | null;
   projectPassword: string | null;
 
+  // 开发者工具状态
+  isAnonymized: boolean;
+  anonymizedNames: Record<string, string>;
+
   // 项目操作
   createProject: (
     surname: string,
@@ -91,6 +98,7 @@ interface FamilyStore {
   ) => Promise<boolean>;
   importProjectFromJSON: (project: FamilyProject) => Promise<string>;
   saveCustomLayout: (layout: Record<string, { x: number; y: number }>) => void;
+  clearCustomLayout: () => void;
   closeProject: () => void;
   saveCurrentProject: () => Promise<void>;
   saveProjectAs: () => Promise<boolean>;
@@ -115,6 +123,9 @@ interface FamilyStore {
   removeSpouse: (personId: string, spouseId: string) => void;
   addChild: (personId: string, childId: string, type?: string) => void;
   removeChild: (personId: string, childId: string) => void;
+
+  // 开发者工具操作
+  toggleAnonymization: () => void;
 }
 
 export const useFamilyStore = create<FamilyStore>((set, get) => ({
@@ -124,6 +135,8 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
   recentProjects: [],
   currentFilePath: null,
   projectPassword: null,
+  isAnonymized: false,
+  anonymizedNames: {},
 
   // ==================== 项目操作 ====================
 
@@ -188,8 +201,9 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
 
   removeRecentProject: (projectId: string, filePath?: string) => {
     const recent = getRecentProjects();
+    // 有 filePath 时以路径精确匹配；无 filePath（纯 Web localStorage 模式）时才以 projectId 匹配
     const filtered = recent.filter(
-      (r) => r.projectId !== projectId && (!filePath || r.filePath !== filePath)
+      (r) => (filePath ? r.filePath !== filePath : r.projectId !== projectId)
     );
     saveRecentProjects(filtered);
     set({ recentProjects: filtered });
@@ -240,15 +254,14 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
           ? fileName.substring(0, fileName.length - 4)
           : fileName;
 
-        const { unpackYrj } = await import('../utils/tauri');
         workspacePath = await unpackYrj(path, parentDir, folderName, password);
       }
 
       // 2. 直接以高速明文读取加载工作区下的 project.json 属性
-      const { loadProjectJson } = await import('../utils/tauri');
       const json = await loadProjectJson(workspacePath);
       const project = JSON.parse(json) as FamilyProject;
-      const projectId = project.meta.defaultPerspectiveId || uuidv4();
+      // 从外部文件/文件夹打开时，总生成新的 projectId，避免与源项目或其他历史记录冲突
+      const projectId = uuidv4();
 
       // 3. 校验密码保护（当 skipPasswordCheck 为 true 时跳过核验，极速进树）
       if (project.meta.hasPassword && !skipPasswordCheck) {
@@ -268,14 +281,19 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
           discardedEmbeddedMedia = true;
         }
 
-        const photos = person.photos.filter((photo) => !photo.path.startsWith('data:'));
-        const audioFiles = person.audioFiles.filter((audio) => !audio.path.startsWith('data:'));
-        const videoFiles = person.videoFiles.filter((video) => !video.path.startsWith('data:'));
+        // 兼容旧数据 / 脱敏数据中媒体数组可能缺失的情况
+        const photos = person.photos?.filter((photo) => !photo.path.startsWith('data:')) ?? [];
+        const audioFiles = person.audioFiles?.filter((audio) => !audio.path.startsWith('data:')) ?? [];
+        const videoFiles = person.videoFiles?.filter((video) => !video.path.startsWith('data:')) ?? [];
+
+        const originalPhotosLen = person.photos?.length ?? 0;
+        const originalAudioLen = person.audioFiles?.length ?? 0;
+        const originalVideoLen = person.videoFiles?.length ?? 0;
 
         if (
-          photos.length !== person.photos.length ||
-          audioFiles.length !== person.audioFiles.length ||
-          videoFiles.length !== person.videoFiles.length
+          photos.length !== originalPhotosLen ||
+          audioFiles.length !== originalAudioLen ||
+          videoFiles.length !== originalVideoLen
         ) {
           person.photos = photos;
           person.audioFiles = audioFiles;
@@ -316,7 +334,8 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
   },
 
   importProjectFromJSON: async (project: FamilyProject) => {
-    const projectId = project.meta.defaultPerspectiveId || uuidv4();
+    // 导入 JSON 时总生成新的 projectId，避免与已有项目冲突
+    const projectId = uuidv4();
     const now = new Date().toISOString();
 
     const recent = getRecentProjects();
@@ -354,6 +373,14 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     autoSave(get);
   },
 
+  clearCustomLayout: () => {
+    const { project } = get();
+    if (!project) return;
+    const { customLayout, ...rest } = project;
+    set({ project: rest as FamilyProject, isDirty: true });
+    autoSave(get);
+  },
+
   closeProject: () => {
     const state = get();
     if (state.isDirty && state.currentProjectId && state.project) {
@@ -383,7 +410,6 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
 
     if (isTauri() && currentFilePath) {
       try {
-        const { saveProjectJson } = await import('../utils/tauri');
         await saveProjectJson(currentFilePath, JSON.stringify(updated, null, 2));
         set({ project: updated, isDirty: false });
       } catch (err) {
@@ -412,7 +438,6 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
 
     try {
       if (isTauri() && currentFilePath) {
-        const { saveProjectJson, packToYrj } = await import('../utils/tauri');
         // 先确保工作区 project.json 处于最新状态
         await saveProjectJson(currentFilePath, JSON.stringify(updated, null, 2));
         // 将整个工作区目录（包括 project.json 与 media/ 照片）一并进行 ZIP 压缩加密打包导出为单文件
@@ -796,5 +821,21 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
       isDirty: false,
     });
     autoSave(get);
+  },
+
+  // ==================== 开发者工具操作 ====================
+
+  toggleAnonymization: () => {
+    const { isAnonymized, project } = get();
+    if (!project) return;
+
+    if (isAnonymized) {
+      // 取消匿名化
+      set({ isAnonymized: false });
+    } else {
+      // 开启匿名化：按创建顺序生成匿名名称
+      const names = generateAnonymizedNames(project.persons);
+      set({ isAnonymized: true, anonymizedNames: names });
+    }
   },
 }));

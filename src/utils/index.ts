@@ -1,7 +1,91 @@
 // 以苒纪 — 工具函数
 
 import { Solar, Lunar } from 'lunar-javascript';
-import type { LunarDate } from '../types';
+import type { LunarDate, Person, FamilyProject } from '../types';
+
+// ==================== 中文数字工具 ====================
+
+const CHINESE_DIGITS = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+
+/**
+ * 将正整数转为中文数字字符串（按位直译）
+ * 1→零一, 23→二三, 108→一零八, 31→三一
+ */
+export function numberToChinese(num: number): string {
+  if (num <= 0) return '零';
+  const digits: number[] = [];
+  let n = num;
+  while (n > 0) {
+    digits.unshift(n % 10);
+    n = Math.floor(n / 10);
+  }
+
+  if (digits.length === 1) {
+    return '零' + CHINESE_DIGITS[digits[0]];
+  }
+
+  return digits.map(d => CHINESE_DIGITS[d]).join('');
+}
+
+/**
+ * 按创建顺序为所有人物生成匿名化名称
+ * 规则：姓氏保留原名，按创建顺序编号，数字转为中文汉字
+ */
+export function generateAnonymizedNames(persons: Record<string, Person>): Record<string, string> {
+  const sorted = Object.values(persons).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const names: Record<string, string> = {};
+  sorted.forEach((p, i) => {
+    names[p.id] = p.surname + numberToChinese(i + 1);
+  });
+  return names;
+}
+
+/**
+ * 生成脱敏导出的项目数据
+ * 保留：匿名姓名、性别、生卒年月、人物关系（夫妻/子女等）、基础结构字段（id/surname/createdAt等）
+ * 剔除：真实姓名（givenName被清空并用匿名name替代）、媒体文件引用、备注、个人描述等敏感字段
+ */
+export function createAnonymizedExport(project: FamilyProject): FamilyProject {
+  const anonymizedNames = generateAnonymizedNames(project.persons);
+  const anonPersons: Record<string, any> = {};
+
+  for (const [id, person] of Object.entries(project.persons)) {
+    const anonFullName = anonymizedNames[id];
+    // 从匿名全名中剥离姓氏，余下部分作为 givenName，确保 getFullName(surname,givenName) 输出完整匿名名
+    const anonGivenName = anonFullName.startsWith(person.surname)
+      ? anonFullName.substring(person.surname.length)
+      : anonFullName;
+
+    anonPersons[id] = {
+      id: person.id,
+      surname: person.surname,
+      givenName: anonGivenName,
+      name: anonFullName,
+      gender: person.gender,
+      birthDateSolar: person.birthDateSolar || undefined,
+      deathDateSolar: person.deathDateSolar || undefined,
+      isAlive: person.isAlive, // 保留存活状态，确保树节点正确显示年龄而非 "2025—"
+      createdAt: person.createdAt,
+      // 保留人物关系结构（夫妻、子女等）
+      relations: person.relations ? { ...person.relations } : undefined,
+      // 空数组占位，确保加载时 .filter() 等操作不会因 undefined 崩溃
+      photos: [],
+      audioFiles: [],
+      videoFiles: [],
+    };
+  }
+
+  // 脱敏数据只导出 meta + persons，不携带源项目的 customLayout（避免把错误布局带出去）
+  // defaultPerspectiveId 必须保留，否则树形布局算法无法计算代际层级
+
+  return {
+    meta: {
+      ...project.meta,
+      familyName: project.meta.familyName + '（脱敏版本）',
+    },
+    persons: anonPersons as any,
+  };
+}
 
 /**
  * 原生 SHA-256 异步哈希辅助函数

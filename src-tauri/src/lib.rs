@@ -16,6 +16,16 @@ fn select_yrj_file_path_for_save(default_name: String) -> Result<Option<String>,
 }
 
 #[tauri::command]
+fn select_zip_file_path_for_save(default_name: String) -> Result<Option<String>, String> {
+    let file = rfd::FileDialog::new()
+        .add_filter("ZIP 压缩包 (*.zip)", &["zip"])
+        .set_file_name(&default_name)
+        .save_file();
+    
+    Ok(file.map(|p| p.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
 fn select_yrj_file_path_for_open() -> Result<Option<String>, String> {
     let file = rfd::FileDialog::new()
         .add_filter("以苒纪工程文件 (*.yrj)", &["yrj"])
@@ -163,6 +173,65 @@ fn open_devtools(app: tauri::AppHandle) {
     }
 }
 
+#[tauri::command]
+fn write_binary_file(path: String, base64_data: String) -> Result<(), String> {
+    use base64::{Engine as _, engine::general_purpose};
+
+    let clean_base64 = if base64_data.contains(",") {
+        base64_data.split(',').collect::<Vec<&str>>()[1]
+    } else {
+        &base64_data
+    };
+
+    let binary_data = general_purpose::STANDARD
+        .decode(clean_base64)
+        .map_err(|e| format!("解码 Base64 失败: {}", e))?;
+
+    // 确保父目录存在
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("创建父目录失败: {}", e))?;
+    }
+
+    fs::write(&path, binary_data)
+        .map_err(|e| format!("写入文件失败: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_app_logs(app: tauri::AppHandle) -> Result<Vec<(String, String)>, String> {
+    if let Ok(log_dir) = app.path().app_log_dir() {
+        if log_dir.exists() {
+            let mut logs = Vec::new();
+            match fs::read_dir(&log_dir) {
+                Ok(entries) => {
+                    for entry in entries {
+                        if let Ok(entry) = entry {
+                            let path = entry.path();
+                            if path.is_file() {
+                                if let Ok(content) = fs::read_to_string(&path) {
+                                    logs.push((
+                                        path.file_name()
+                                            .unwrap_or_default()
+                                            .to_string_lossy()
+                                            .into_owned(),
+                                        content,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(_) => {}
+            }
+            if !logs.is_empty() {
+                return Ok(logs);
+            }
+        }
+    }
+    Ok(Vec::new())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -190,6 +259,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             select_yrj_file_path_for_save,
+            select_zip_file_path_for_save,
             select_yrj_file_path_for_open,
             select_project_parent_dir,
             create_project_workspace,
@@ -200,7 +270,9 @@ pub fn run() {
             pack_to_yrj,
             unpack_yrj,
             is_yrj_file_encrypted,
-            open_devtools
+            open_devtools,
+            write_binary_file,
+            get_app_logs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

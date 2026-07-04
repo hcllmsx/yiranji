@@ -39,6 +39,8 @@ function PersonNode({ data }: { data: PersonNodeData }) {
   const { person, isPerspective, showCoordinates } = data;
   const navigate = useNavigate();
   const project = useFamilyStore((state) => state.project);
+  const isAnonymized = useFamilyStore((state) => state.isAnonymized);
+  const anonymizedNames = useFamilyStore((state) => state.anonymizedNames);
   const perspectiveId = project?.meta.defaultPerspectiveId;
   const relationText = getRelationshipText(person.id, perspectiveId, project?.persons || {});
 
@@ -109,12 +111,15 @@ function PersonNode({ data }: { data: PersonNodeData }) {
     }
   };
 
-  const fullName = getFullName(person.surname, person.givenName) || '未命名';
+  const fullName = isAnonymized
+    ? (anonymizedNames[person.id] || '未知')
+    : (getFullName(person.surname, person.givenName) || '未命名');
 
   const genderText = person.gender === 'male' ? '男' : '女';
   let subtitle = genderText;
 
-  if (person.isAlive) {
+  // isAlive 未显式设置时默认视为在世，避免误入已故分支显示 "2025—"
+  if (person.isAlive !== false) {
     const age = person.birthDateSolar ? formatAge(person.birthDateSolar) : '';
     if (age) {
       subtitle += ` · ${age}`;
@@ -280,45 +285,35 @@ function CoordinateAxes() {
 
 function TreePageContent() {
   const navigate = useNavigate();
-  const { project, getPersonsList, addPerson, setRelation, updatePerson, deletePerson, currentFilePath, saveCustomLayout } = useFamilyStore();
+  const { project, getPersonsList, addPerson, setRelation, updatePerson, deletePerson, currentFilePath, saveCustomLayout, clearCustomLayout } = useFamilyStore();
   const persons = getPersonsList();
+  // 用于一次性初始适应窗口 & 实时读取所有节点位置
+  const { fitView, getNodes } = useReactFlow();
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
   const hasCustomLayout = !!(project?.customLayout && Object.keys(project.customLayout).length > 0);
 
-  const applyCustomLayout = useCallback(() => {
-    if (!project?.customLayout) return;
-    setNodes((prevNodes) =>
-      prevNodes.map((node) => {
-        const pos = project.customLayout?.[node.id];
-        if (pos) {
-          return {
-            ...node,
-            position: { x: pos.x, y: pos.y },
-          };
-        }
-        return node;
-      })
-    );
-  }, [project?.customLayout, setNodes]);
-
-  const handleNodeDragStop = useCallback((_event: any, _node: Node, currentNodes: Node[]) => {
+  const handleNodeDragStop = useCallback((_event: any, _node: Node, _currentNodes: Node[]) => {
+    // 直接读取 ReactFlow 内部实时状态，避免回调参数中可能存在的位置回退问题
+    const allNodes = getNodes();
     const layout: Record<string, { x: number; y: number }> = {};
-    currentNodes.forEach((node) => {
+    allNodes.forEach((node) => {
       layout[node.id] = {
         x: Math.round(node.position.x),
         y: Math.round(node.position.y),
       };
     });
     saveCustomLayout(layout);
-  }, [saveCustomLayout]);
-
-  const hasAppliedCustomLayoutRef = useRef(false);
+    // 用户手动拖拽节点后，自动切回"自定义布局"视图模式
+    useDefaultLayoutRef.current = false;
+  }, [saveCustomLayout, getNodes]);
 
   const [showCoordinates, setShowCoordinates] = useState(false);
   const showCoordinatesRef = useRef(showCoordinates);
+  // 视图模式：true=显示默认算法布局，false=应用自定义布局
+  const useDefaultLayoutRef = useRef(false);
 
   useEffect(() => {
     showCoordinatesRef.current = showCoordinates;
@@ -1040,6 +1035,17 @@ function TreePageContent() {
       });
     }
 
+    // 仅当视图模式为"自定义布局"时应用已保存的自定义位置
+    const currentCustomLayout = useFamilyStore.getState().project?.customLayout;
+    if (!useDefaultLayoutRef.current && currentCustomLayout) {
+      layouted.forEach((n) => {
+        const pos = currentCustomLayout[n.id];
+        if (pos) {
+          n.position = { x: pos.x, y: pos.y };
+        }
+      });
+    }
+
     setNodes(layouted);
     // 渲染时把配偶边连线也一同展示给 React Flow，并默认让配偶连线在最上层
     const defaultSortedEdges = [...graphEdges].sort((a, b) => {
@@ -1054,14 +1060,17 @@ function TreePageContent() {
     buildGraph();
   }, [buildGraph]);
 
+  // 初始构建后自动适应窗口（仅一次）
+  const didInitFitViewRef = useRef(false);
   useEffect(() => {
-    if (project && !hasAppliedCustomLayoutRef.current) {
-      if (project.customLayout && Object.keys(project.customLayout).length > 0) {
-        applyCustomLayout();
-      }
-      hasAppliedCustomLayoutRef.current = true;
+    if (nodes.length > 0 && !didInitFitViewRef.current) {
+      didInitFitViewRef.current = true;
+      // 延迟一帧等 ReactFlow 渲染完成
+      requestAnimationFrame(() => {
+        fitView({ padding: 0.3 });
+      });
     }
-  }, [project, applyCustomLayout]);
+  }, [nodes.length, fitView]);
 
   // 右键菜单处理
   const handleNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
@@ -1228,25 +1237,53 @@ function TreePageContent() {
           <button className="btn btn-sm btn-secondary" onClick={() => navigate('/person/new/edit')}>
             ➕ 添加人物
           </button>
-          <button className="btn btn-sm btn-secondary" onClick={() => buildGraph()}>
-            🔄 重置布局
-          </button>
           <button
             className="btn btn-sm btn-secondary"
-            onClick={applyCustomLayout}
-            disabled={!hasCustomLayout}
-            style={{
-              opacity: hasCustomLayout ? 1 : 0.5,
-              cursor: hasCustomLayout ? 'pointer' : 'not-allowed',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              transition: 'all 0.2s',
+            onClick={() => {
+              useDefaultLayoutRef.current = true;
+              buildGraph();
             }}
-            title="应用自定义拖拽后保存的卡片坐标布局"
           >
-            🎨 自定义布局
+            🔄 默认布局
           </button>
+          <div className="custom-layout-btn-wrapper">
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={() => {
+                useDefaultLayoutRef.current = false;
+                buildGraph();
+              }}
+              disabled={!hasCustomLayout}
+              style={{
+                opacity: hasCustomLayout ? 1 : 0.5,
+                cursor: hasCustomLayout ? 'pointer' : 'not-allowed',
+              }}
+              title="应用自定义拖拽后保存的卡片坐标布局"
+            >
+              🎨 自定义布局
+            </button>
+            {hasCustomLayout && (
+              <button
+                className="btn-clear-custom-layout"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDialog({
+                    show: true,
+                    title: '清除自定义布局',
+                    message: '确认清除所有自定义布局信息？所有手动拖拽的节点位置将被清空。',
+                    onConfirm: () => {
+                      clearCustomLayout();
+                      useDefaultLayoutRef.current = true;
+                      buildGraph();
+                    },
+                  });
+                }}
+                title="清除所有自定义布局信息"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1266,8 +1303,6 @@ function TreePageContent() {
             'controls.fitView.ariaLabel': '适应窗口',
             'controls.interactive.ariaLabel': '锁定/解锁画布',
           }}
-          fitView
-          fitViewOptions={{ padding: 0.3 }}
           minZoom={0.2}
           maxZoom={2}
           proOptions={{ hideAttribution: true }}

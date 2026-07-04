@@ -12,7 +12,7 @@ import {
   getZodiac,
   getSiblingRank,
 } from '../utils';
-import { convertLocalSrc, isTauri } from '../utils/tauri';
+import { convertLocalSrc, isTauri, saveMediaFile, deleteMediaFile } from '../utils/tauri';
 import { lockBodyScroll } from '../utils/bodyScrollLock';
 import type { Photo, VideoFile } from '../types';
 import './PersonDetailPage.css';
@@ -158,7 +158,6 @@ export default function PersonDetailPage() {
 
     const randomId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
     const filename = `${prefix}_${randomId}.${getMediaExtension(file)}`;
-    const { saveMediaFile } = await import('../utils/tauri');
     await saveMediaFile(currentFilePath, filename, dataUrl);
     return `${currentFilePath}/media/${filename}`;
   };
@@ -246,7 +245,6 @@ export default function PersonDetailPage() {
   const deletePhysicalMedia = async (mediaPath: string) => {
     if (!isTauri() || !currentFilePath || mediaPath.startsWith('data:')) return;
     try {
-      const { deleteMediaFile } = await import('../utils/tauri');
       await deleteMediaFile(currentFilePath, mediaPath);
     } catch (err) {
       console.error('删除媒体文件失败:', err);
@@ -395,7 +393,6 @@ export default function PersonDetailPage() {
           try {
             const randomId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
             const thumbName = `video_thumb_${randomId}.jpg`;
-            const { saveMediaFile } = await import('../utils/tauri');
             await saveMediaFile(currentFilePath, thumbName, thumbInfo.thumbnail);
             thumbnailPath = `${currentFilePath}/media/${thumbName}`;
           } catch {
@@ -474,7 +471,6 @@ export default function PersonDetailPage() {
     if (!thumbnailPath || !isTauri() || !currentFilePath) return;
     if (thumbnailPath.startsWith('data:')) return;
     try {
-      const { deleteMediaFile } = await import('../utils/tauri');
       await deleteMediaFile(currentFilePath, thumbnailPath).catch(() => {});
     } catch {
       /* ignore */

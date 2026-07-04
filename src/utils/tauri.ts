@@ -29,6 +29,15 @@ export async function selectFilePathForSave(defaultName: string): Promise<string
 }
 
 /**
+ * 弹出原生保存文件对话框，选择 .zip 保存路径
+ */
+export async function selectFilePathForSaveZip(defaultName: string): Promise<string | null> {
+  const api = await getTauriApi();
+  if (!api) return null;
+  return api.invoke<string | null>('select_zip_file_path_for_save', { defaultName });
+}
+
+/**
  * 弹出原生打开文件对话框，选择 .yrj 文件
  */
 export async function selectFilePathForOpen(): Promise<string | null> {
@@ -214,4 +223,28 @@ export async function showTauriWindow(): Promise<void> {
       console.error('显示窗口失败:', e);
     }
   }
+}
+
+/**
+ * 将 Base64 编码的二进制数据写入指定文件路径
+ */
+export async function writeBinaryFile(path: string, base64Data: string): Promise<void> {
+  const api = await getTauriApi();
+  if (!api) throw new Error('未运行在 Tauri 环境中');
+  return api.invoke<void>('write_binary_file', { path, base64Data });
+}
+
+/**
+ * 获取 Tauri 应用日志文件列表
+ * 返回 [{filename, content}, ...]
+ */
+export async function getAppLogs(): Promise<Array<{ filename: string; content: string }>> {
+  if (isTauri()) {
+    const api = await getTauriApi();
+    if (!api) return [];
+    const raw = await api.invoke<Array<[string, string]>>('get_app_logs');
+    return raw.map(([filename, content]) => ({ filename, content }));
+  }
+  // Web 环境下尝试读取控制台日志（基本不可行），返回空
+  return [];
 }

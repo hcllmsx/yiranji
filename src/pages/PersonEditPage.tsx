@@ -12,7 +12,7 @@ import {
   getSiblingRank,
 } from '../utils';
 import { Lunar } from 'lunar-javascript';
-import { isTauri, convertLocalSrc } from '../utils/tauri';
+import { isTauri, convertLocalSrc, saveMediaFile, deleteMediaFile } from '../utils/tauri';
 import AvatarCropModal from '../components/AvatarCropModal';
 import type { Person, Gender, LunarDate } from '../types';
 import chinaRegions from '../data/china-regions.json';
@@ -332,7 +332,6 @@ export default function PersonEditPage() {
         const randomId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
         const filename = `avatar_${randomId}.${ext}`;
 
-        const { saveMediaFile } = await import('../utils/tauri');
         await saveMediaFile(workspacePath, filename, newAvatarBase64);
 
         // 绑定物理路径
@@ -354,7 +353,6 @@ export default function PersonEditPage() {
         const randomId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
         const filename = `avatar_rect_${randomId}.${ext}`;
 
-        const { saveMediaFile } = await import('../utils/tauri');
         await saveMediaFile(workspacePath, filename, newAvatarRectBase64);
 
         finalAvatarRect = `${workspacePath}/media/${filename}`;
@@ -366,7 +364,6 @@ export default function PersonEditPage() {
     // 删除旧头像物理文件（如果用户主动删除了头像）
     if (avatarToDelete && existingPerson && isTauri() && workspacePath) {
       try {
-        const { deleteMediaFile } = await import('../utils/tauri');
         if (existingPerson.avatar && !existingPerson.avatar.startsWith('data:')) {
           await deleteMediaFile(workspacePath, existingPerson.avatar).catch(() => {});
         }
@@ -388,7 +385,6 @@ export default function PersonEditPage() {
     ) {
       // 用户重新上传了新头像，且与旧头像不同，则删除旧头像物理文件
       try {
-        const { deleteMediaFile } = await import('../utils/tauri');
         await deleteMediaFile(workspacePath, existingPerson.avatar).catch(() => {});
         if (existingPerson.avatarRect && !existingPerson.avatarRect.startsWith('data:')) {
           await deleteMediaFile(workspacePath, existingPerson.avatarRect).catch(() => {});

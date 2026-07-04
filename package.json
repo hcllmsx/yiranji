@@ -1,7 +1,7 @@
 {
   "name": "yiranji",
   "private": true,
-  "version": "26.7.3",
+  "version": "26.7.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -17,6 +17,7 @@
     "@types/uuid": "^10.0.0",
     "@xyflow/react": "^12.11.1",
     "dagre": "^0.8.5",
+    "jszip": "^3.10.1",
     "lunar-javascript": "^1.7.7",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",

@@ -458,3 +458,42 @@
   }
 }
 
+/* 自定义布局按钮包装器 */
+.custom-layout-btn-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.btn-clear-custom-layout {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-border);
+  background-color: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  font-size: 10px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+  padding: 0;
+  z-index: 11;
+}
+
+.custom-layout-btn-wrapper:hover .btn-clear-custom-layout {
+  opacity: 1;
+}
+
+.btn-clear-custom-layout:hover {
+  color: #ef4444;
+  background-color: #fef2f2;
+  border-color: #ef4444;
+}
+
