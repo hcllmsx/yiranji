@@ -1,4 +1,4 @@
-/* 人物列表页样式 */
+/* 人员列表页样式 */
 
 .persons-page {
   padding: var(--space-8);
@@ -48,7 +48,7 @@
   color: var(--color-text-tertiary);
 }
 
-/* 人物卡片网格 */
+/* 人员卡片网格 */
 .persons-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -123,7 +123,7 @@
   margin-top: var(--space-2);
 }
 
-/* 添加人物卡片 */
+/* 添加人员卡片 */
 .person-card-add {
   border: 2px dashed var(--color-border);
   display: flex;

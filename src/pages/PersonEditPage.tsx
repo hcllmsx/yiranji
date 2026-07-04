@@ -315,6 +315,15 @@ export default function PersonEditPage() {
 
   // 保存数据
   const handleSave = async () => {
+    await doSave();
+  };
+
+  const handleConfirmFirstPerson = () => {
+    setShowFirstPersonDialog(false);
+    setFirstPersonConfirmed(true);
+  };
+
+  const doSave = async () => {
     let finalAvatar = avatar;
     let finalAvatarRect = avatarRect;
 
@@ -617,6 +626,18 @@ export default function PersonEditPage() {
 
   const [showRelationMenu, setShowRelationMenu] = useState<boolean>(false);
 
+  // 第一人默认视角确认对话框
+  const isFirstPerson = isNew && Object.keys(project?.persons || {}).length === 0;
+  const [showFirstPersonDialog, setShowFirstPersonDialog] = useState(false);
+  const [firstPersonConfirmed, setFirstPersonConfirmed] = useState(false);
+
+  // 进入编辑页时（挂载阶段）立即弹窗提示默认视角
+  useEffect(() => {
+    if (isFirstPerson && !firstPersonConfirmed) {
+      setShowFirstPersonDialog(true);
+    }
+  }, [isFirstPerson, firstPersonConfirmed]);
+
   // 模拟临时全谱数据状态以实时计算兄弟姐妹长幼称呼
   const getTempPersons = () => {
     const bYear = String(sBirthYear).padStart(4, '0');
@@ -697,7 +718,7 @@ export default function PersonEditPage() {
   return (
     <div className="person-edit-page">
       <div className="person-edit-header">
-        <h2>{isNew ? '添加人物' : `编辑 ${getFullName(surname, givenName)}`}</h2>
+        <h2>{isNew ? '添加人员' : `编辑 ${getFullName(surname, givenName)}`}</h2>
         <div className="person-edit-header-actions">
           <button className="btn btn-secondary" onClick={() => navigate(-1)}>
             取消
@@ -1354,7 +1375,7 @@ export default function PersonEditPage() {
                         setSiblingIds(newSibs);
                       }}
                     >
-                      <option value="">请选择人物...</option>
+                      <option value="">请选择人员...</option>
                       {availablePersons.map((p) => (
                         <option key={p.id} value={p.id}>
                           {getFullName(p.surname, p.givenName)}
@@ -1454,6 +1475,31 @@ export default function PersonEditPage() {
           onClose={() => setCropModalImage(null)}
           onSave={handleCropSave}
         />
+      )}
+
+      {/* 第一人默认视角确认对话框 */}
+      {showFirstPersonDialog && (
+        <div className="custom-dialog-overlay" onClick={() => { setShowFirstPersonDialog(false); navigate(-1); }}>
+          <div className="custom-dialog-box" onClick={(e) => e.stopPropagation()}>
+            <div className="custom-dialog-header">
+              <span className="custom-dialog-icon">📌</span>
+              <span className="custom-dialog-title">默认视角确认</span>
+            </div>
+            <div className="custom-dialog-message">
+              这是本家谱中创建的第一个人员，将被设置为<strong>默认视角</strong>。
+              <br />
+              后续所有人员关系（辈分、代际层级等）都将以该人员为基准进行计算与展示，请悉知。
+            </div>
+            <div className="custom-dialog-buttons">
+              <button className="btn btn-secondary btn-sm" onClick={() => { setShowFirstPersonDialog(false); navigate(-1); }}>
+                返回
+              </button>
+              <button className="btn btn-primary btn-sm" onClick={handleConfirmFirstPerson}>
+                知道了
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

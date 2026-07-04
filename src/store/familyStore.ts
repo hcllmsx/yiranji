@@ -109,7 +109,7 @@ interface FamilyStore {
   updateMeta: (updates: Partial<FamilyMeta>) => void;
   changeProjectPassword: (newPassword: string | null) => Promise<void>;
 
-  // 人物操作
+  // 人员操作
   addPerson: (personData?: Partial<Person>) => string;
   updatePerson: (id: string, updates: Partial<Person>) => void;
   deletePerson: (id: string) => void;
@@ -522,7 +522,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     autoSave(get);
   },
 
-  // ==================== 人物操作 ====================
+  // ==================== 人员操作 ====================
 
   addPerson: (personData?: Partial<Person>) => {
     const { project } = get();
@@ -597,7 +597,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     const newPersons = { ...project.persons };
     delete newPersons[id];
 
-    // 清理所有人物中对该人物的关系引用
+    // 清理所有人员中对该人员的关系引用
     Object.values(newPersons).forEach((p) => {
       const r = p.relations;
       if (r.father === id) r.father = undefined;

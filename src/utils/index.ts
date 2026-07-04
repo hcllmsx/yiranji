@@ -28,7 +28,7 @@ export function numberToChinese(num: number): string {
 }
 
 /**
- * 按创建顺序为所有人物生成匿名化名称
+ * 按创建顺序为所有人员生成匿名化名称
  * 规则：姓氏保留原名，按创建顺序编号，数字转为中文汉字
  */
 export function generateAnonymizedNames(persons: Record<string, Person>): Record<string, string> {
@@ -42,7 +42,7 @@ export function generateAnonymizedNames(persons: Record<string, Person>): Record
 
 /**
  * 生成脱敏导出的项目数据
- * 保留：匿名姓名、性别、生卒年月、人物关系（夫妻/子女等）、基础结构字段（id/surname/createdAt等）
+ * 保留：匿名姓名、性别、生卒年月、人员关系（夫妻/子女等）、基础结构字段（id/surname/createdAt等）
  * 剔除：真实姓名（givenName被清空并用匿名name替代）、媒体文件引用、备注、个人描述等敏感字段
  */
 export function createAnonymizedExport(project: FamilyProject): FamilyProject {
@@ -65,8 +65,9 @@ export function createAnonymizedExport(project: FamilyProject): FamilyProject {
       birthDateSolar: person.birthDateSolar || undefined,
       deathDateSolar: person.deathDateSolar || undefined,
       isAlive: person.isAlive, // 保留存活状态，确保树节点正确显示年龄而非 "2025—"
+      isDefaultPerspective: person.isDefaultPerspective, // 保留默认视角标记
       createdAt: person.createdAt,
-      // 保留人物关系结构（夫妻、子女等）
+      // 保留人员关系结构（夫妻、子女等）
       relations: person.relations ? { ...person.relations } : undefined,
       // 空数组占位，确保加载时 .filter() 等操作不会因 undefined 崩溃
       photos: [],
@@ -82,6 +83,9 @@ export function createAnonymizedExport(project: FamilyProject): FamilyProject {
     meta: {
       ...project.meta,
       familyName: project.meta.familyName + '（脱敏版本）',
+      // 脱敏数据已无敏感信息，自动移除密码保护
+      hasPassword: false,
+      passwordHash: undefined,
     },
     persons: anonPersons as any,
   };
@@ -258,14 +262,14 @@ export function formatDate(dateStr: string, precision: 'date' | 'time' = 'date')
 }
 
 /**
- * 获取人物的全名
+ * 获取人员的全名
  */
 export function getFullName(surname: string, givenName: string): string {
   return `${surname}${givenName}`;
 }
 
 /**
- * 获取人物的年龄描述
+ * 获取人员的年龄描述
  */
 export function getAgeDescription(
   birthDateSolar?: string,

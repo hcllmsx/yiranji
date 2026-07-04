@@ -350,7 +350,7 @@ export default function AvatarCropModal({ imageSrc, onClose, onSave }: AvatarCro
                 {previewCircleSrc && <img src={previewCircleSrc} alt="圆形头像预览" />}
               </div>
               <div className="avatar-crop-preview-desc">
-                用于家谱树、人物列表中的圆形头像显示
+                用于家谱树、人员列表中的圆形头像显示
               </div>
             </div>
 

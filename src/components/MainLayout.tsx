@@ -63,7 +63,7 @@ export default function MainLayout() {
             }
           >
             <span className="nav-icon">👤</span>
-            <span>人物列表</span>
+            <span>人员列表</span>
           </NavLink>
 
           <NavLink

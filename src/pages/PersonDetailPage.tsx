@@ -46,9 +46,9 @@ export default function PersonDetailPage() {
       <div className="page-container">
         <div className="empty-state">
           <div className="empty-state-icon">🔍</div>
-          <div className="empty-state-title">未找到该人物</div>
+          <div className="empty-state-title">未找到该人员</div>
           <button className="btn btn-primary" onClick={() => navigate('/persons')}>
-            返回人物列表
+            返回人员列表
           </button>
         </div>
       </div>
@@ -622,7 +622,7 @@ export default function PersonDetailPage() {
                 });
               }}
             >
-              <span>🗑️</span> 删除人物
+              <span>🗑️</span> 删除人员
             </button>
           </div>
         </div>

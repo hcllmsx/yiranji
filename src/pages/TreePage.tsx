@@ -601,7 +601,7 @@ function TreePageContent() {
     onConfirm: () => void;
   } | null>(null);
 
-  // 从人物数据构建节点和边
+  // 从人员数据构建节点和边
   const buildGraph = useCallback(() => {
     const personsList = Object.values(project?.persons || {});
     if (personsList.length === 0) return;
@@ -857,7 +857,7 @@ function TreePageContent() {
       // 递归计算子代
       const children = person.relations.children || [];
       if (children.length > 0) {
-        // 子嗣排序：寻找包含主脉视角人物的子代作为中心锚点，其他手足左右交错排序，使主视角支系天然处于中心位置
+        // 子嗣排序：寻找包含主脉视角人员的子代作为中心锚点，其他手足左右交错排序，使主视角支系天然处于中心位置
         const childrenObj = [...children].map(c => project?.persons[c.id]).filter(Boolean) as Person[];
         let anchorIndex = -1;
         if (perspectiveId) {
@@ -1023,7 +1023,7 @@ function TreePageContent() {
       }
     });
 
-    // ====== 新增：全局平移，将主视角人物的几何中心（即位置）对齐到原点 (0,0) ======
+    // ====== 新增：全局平移，将主视角人员的几何中心（即位置）对齐到原点 (0,0) ======
     const perspectiveNode = layouted.find(n => n.id === perspectiveId);
     if (perspectiveNode) {
       const deltaX = 0 - perspectiveNode.position.x;
@@ -1086,7 +1086,7 @@ function TreePageContent() {
     setContextMenu(null);
   }, []);
 
-  // 添加关系人物
+  // 添加关系人员
   const handleAddRelation = (type: string) => {
     if (!contextMenu) return;
     const personId = contextMenu.personId;
@@ -1109,7 +1109,7 @@ function TreePageContent() {
       case 'child':
         newId = addPerson();
         if (!newId) return;
-        // 新人物的父/母设为当前人物，若当前人物已拥有配偶，则一并绑定配偶为另一半父母
+        // 新人员的父/母设为当前人员，若当前人员已拥有配偶，则一并绑定配偶为另一半父母
         if (person.gender === 'male') {
           setRelation(newId, 'father', personId);
           const spouseId = person.relations.spouses?.[0]?.id;
@@ -1183,10 +1183,10 @@ function TreePageContent() {
         <div className="tree-container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
           <div className="tree-empty">
             <div className="tree-empty-icon">🌳</div>
-            <div className="tree-empty-title">还没有添加人物</div>
-            <div className="tree-empty-desc">添加第一个人物，开始构建你的家谱树</div>
+            <div className="tree-empty-title">还没有添加人员</div>
+            <div className="tree-empty-desc">添加第一个人员，开始构建你的家谱树</div>
             <button className="btn btn-primary" onClick={() => navigate('/person/new/edit')}>
-              ＋ 添加第一个人物
+              ＋ 添加第一个人员
             </button>
           </div>
         </div>
@@ -1235,7 +1235,7 @@ function TreePageContent() {
             📐 {showCoordinates ? '隐藏坐标系' : '显示坐标系'}
           </button>
           <button className="btn btn-sm btn-secondary" onClick={() => navigate('/person/new/edit')}>
-            ➕ 添加人物
+            ➕ 添加人员
           </button>
           <button
             className="btn btn-sm btn-secondary"
@@ -1354,7 +1354,7 @@ function TreePageContent() {
             </button>
             <div className="context-menu-divider" />
             <button className="context-menu-item danger-text" onClick={handleDeletePerson}>
-              🗑️ 删除人物
+              🗑️ 删除人员
             </button>
           </div>
         </>

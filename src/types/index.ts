@@ -67,7 +67,7 @@ export interface ChildRelation {
   type: ChildRelationType;
 }
 
-/** 人物关系集合 */
+/** 人员关系集合 */
 export interface Relations {
   father?: string;
   mother?: string;
@@ -79,7 +79,7 @@ export interface Relations {
   children: ChildRelation[];
 }
 
-// ==================== 人物 ====================
+// ==================== 人员 ====================
 
 export interface Person {
   id: string;
@@ -152,7 +152,7 @@ export interface RecentProject {
   projectId: string;          // localStorage key
 }
 
-// ==================== 创建人物的默认值工厂 ====================
+// ==================== 创建人员的默认值工厂 ====================
 
 export function createDefaultPerson(surname: string): Omit<Person, 'id' | 'createdAt' | 'updatedAt'> {
   return {

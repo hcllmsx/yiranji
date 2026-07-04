@@ -35,6 +35,10 @@ export default function WelcomePage() {
   const [unlockPassword, setUnlockPassword] = useState('');
   const [unlockError, setUnlockError] = useState('');
 
+  // 密码确认对话框（创建时）
+  const [showPwdConfirmDialog, setShowPwdConfirmDialog] = useState(false);
+  const [pendingCreatePwd, setPendingCreatePwd] = useState('');
+
   // 自定义对话框相关
   const [dialog, setDialog] = useState<{
     show: boolean;
@@ -91,14 +95,29 @@ export default function WelcomePage() {
     if (!surname.trim()) return;
     const finalFamilyName = familyName.trim() || `${surname.trim()}氏-以苒纪`;
 
+    // 如果用户设置了密码，先校验格式再弹窗确认
+    if (password.trim()) {
+      const pwd = password.trim();
+      if (pwd.length < 4) {
+        showCustomAlert('设置的加密密码不能少于 4 位！');
+        return;
+      }
+      setPendingCreatePwd(pwd);
+      setShowPwdConfirmDialog(true);
+      return;
+    }
+
+    await doCreate(surname.trim(), finalFamilyName);
+  };
+
+  const doCreate = async (surnameVal: string, finalFamilyName: string, pwd?: string) => {
     let workspacePath: string | undefined = undefined;
     if (isTauri()) {
       if (!selectedParentDir) {
         showCustomAlert("请选择家谱保存位置目录！");
         return;
       }
-      const trimmedPassword = password.trim();
-      if (trimmedPassword && trimmedPassword.length < 4) {
+      if (pwd && pwd.length < 4) {
         showCustomAlert("设置的加密密码不能少于 4 位！");
         return;
       }
@@ -109,17 +128,15 @@ export default function WelcomePage() {
         return;
       }
     } else {
-      // Web 环境下的密码检验
-      const trimmedPassword = password.trim();
-      if (trimmedPassword && trimmedPassword.length < 4) {
+      if (pwd && pwd.length < 4) {
         showCustomAlert("设置的加密密码不能少于 4 位！");
         return;
       }
     }
 
     const projectId = await createProject(
-      surname.trim(),
-      password.trim() ? password.trim() : undefined,
+      surnameVal,
+      pwd || undefined,
       workspacePath,
       finalFamilyName
     );
@@ -531,7 +548,7 @@ export default function WelcomePage() {
               <div className="form-group">
                 <label className="form-label">访问密码（可选）</label>
                 <input
-                  type="password"
+                  type="text"
                   className="form-input"
                   placeholder="留空则不设密码，输入字符即启用保护"
                   value={password}
@@ -593,6 +610,45 @@ export default function WelcomePage() {
           </div>
         </div>
       )}
+      {/* 密码确认对话框（创建家谱时） */}
+      {showPwdConfirmDialog && (
+        <div className="modal-overlay" onClick={() => setShowPwdConfirmDialog(false)}>
+          <div className="modal animate-scale-in" style={{ maxWidth: '420px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>密码确认</h3>
+            </div>
+            <div className="modal-body" style={{ fontSize: '14px', lineHeight: '1.8', color: 'var(--color-text-secondary)' }}>
+              <p style={{ marginBottom: '12px' }}>请牢记密码，否则无法恢复！</p>
+              <div style={{
+                background: 'var(--color-bg-secondary, #f5f5f5)',
+                border: '1px solid var(--color-border, #ddd)',
+                borderRadius: '6px',
+                padding: '10px 14px',
+                fontFamily: 'monospace',
+                fontSize: '18px',
+                fontWeight: 600,
+                textAlign: 'center',
+                wordBreak: 'break-all',
+                color: 'var(--color-text-primary)',
+              }}>
+                {pendingCreatePwd}
+              </div>
+            </div>
+            <div className="modal-footer" style={{ gap: '12px' }}>
+              <button className="btn btn-secondary" onClick={() => setShowPwdConfirmDialog(false)}>
+                返回修改
+              </button>
+              <button className="btn btn-primary" onClick={() => {
+                setShowPwdConfirmDialog(false);
+                doCreate(surname.trim(), familyName.trim() || `${surname.trim()}氏-以苒纪`, pendingCreatePwd);
+              }}>
+                确认创建
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 自定义对话框 (Alert / Confirm) */}
       {dialog.show && (
         <div className="modal-overlay">

@@ -19,9 +19,9 @@ export default function PersonsPage() {
   return (
     <div className="persons-page">
       <div className="persons-header">
-        <h2>人物列表</h2>
+        <h2>人员列表</h2>
         <button className="btn btn-primary" onClick={() => navigate('/person/new/edit')}>
-          ＋ 添加人物
+          ＋ 添加人员
         </button>
       </div>
 
@@ -29,7 +29,7 @@ export default function PersonsPage() {
         <span className="search-icon">🔍</span>
         <input
           type="text"
-          placeholder="搜索人物姓名、出生地..."
+          placeholder="搜索人员姓名、出生地..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -65,20 +65,20 @@ export default function PersonsPage() {
           </Link>
         ))}
 
-        {/* 添加人物卡片 */}
+        {/* 添加人员卡片 */}
         <button
           className="person-card person-card-add"
           onClick={() => navigate('/person/new/edit')}
         >
           <span className="add-icon">＋</span>
-          <span>添加人物</span>
+          <span>添加人员</span>
         </button>
       </div>
 
       {filtered.length === 0 && search && (
         <div className="empty-state" style={{ marginTop: '32px' }}>
           <div className="empty-state-icon">🔍</div>
-          <div className="empty-state-title">未找到匹配的人物</div>
+          <div className="empty-state-title">未找到匹配的人员</div>
           <div className="empty-state-desc">尝试使用其他关键词搜索</div>
         </div>
       )}

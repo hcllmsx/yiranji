@@ -81,7 +81,7 @@
   overflow: hidden;
 }
 
-/* 自定义人物节点 */
+/* 自定义人员节点 */
 .tree-person-node {
   padding: var(--space-3) var(--space-4);
   background-color: var(--color-bg-card);

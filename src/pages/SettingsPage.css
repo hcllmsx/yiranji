@@ -161,3 +161,145 @@
   background-color: oklch(70% 0.18 80);
   border-color: oklch(70% 0.18 80);
 }
+
+/* ==================== Toast 通知 ==================== */
+.settings-toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  animation: toastSlideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  cursor: pointer;
+  max-width: 420px;
+}
+
+@keyframes toastSlideIn {
+  from {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.settings-toast.success {
+  background-color: oklch(96% 0.04 140);
+  border: 1px solid oklch(80% 0.1 140);
+  color: oklch(35% 0.15 140);
+}
+
+.settings-toast.error {
+  background-color: oklch(96% 0.04 20);
+  border: 1px solid oklch(80% 0.1 20);
+  color: oklch(45% 0.2 20);
+}
+
+.settings-toast-icon {
+  font-size: 1.1rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.settings-toast.success .settings-toast-icon {
+  background-color: oklch(85% 0.12 140);
+}
+
+.settings-toast.error .settings-toast-icon {
+  background-color: oklch(85% 0.12 20);
+}
+
+.settings-toast-text {
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  flex: 1;
+  word-break: break-all;
+}
+
+.settings-toast-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: inherit;
+  opacity: 0.6;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: opacity var(--transition-fast);
+}
+
+.settings-toast-close:hover {
+  opacity: 1;
+}
+
+/* ==================== 密码输入行 ==================== */
+.password-inputs-row {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.password-inputs-row .form-group {
+  flex: 1;
+  min-width: 0;
+}
+
+.password-buttons-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+/* 带边框按钮 */
+.btn-bordered {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  transition: all var(--transition-fast);
+}
+
+.btn-bordered:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background-color: var(--color-accent-lighter);
+}
+
+.btn-primary-outline {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.btn-primary-outline:hover {
+  background-color: var(--color-accent);
+  color: #fff;
+}
+
+/* ==================== 密码验证对话框内输入 ==================== */
+.custom-dialog-password {
+  margin-bottom: var(--space-4);
+}
+
+.custom-dialog-password .form-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.custom-dialog-error {
+  margin: var(--space-2) 0 0 0;
+  font-size: var(--text-xs);
+  color: var(--color-danger, #ef4444);
+}
