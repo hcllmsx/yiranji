@@ -30,6 +30,7 @@ interface CropState {
 
 export default function AvatarCropModal({ imageSrc, onClose, onSave }: AvatarCropModalProps) {
   const imgRef = useRef<HTMLImageElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   // 图片原始尺寸
   const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
@@ -143,14 +144,27 @@ export default function AvatarCropModal({ imageSrc, onClose, onSave }: AvatarCro
     }
   };
 
-  // 滚轮缩放
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = -e.deltaY * 0.002;
-    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, current.zoom + delta));
-    const next = clampOffset(current.offset.x, current.offset.y);
-    setCurrent((s) => ({ ...s, zoom: newZoom, offset: next }));
-  };
+  // 滚轮缩放：用 ref 保存最新的 state 与回调，避免 native listener 频繁重绑
+  const wheelStateRef = useRef({ current, clampOffset, setCurrent });
+  useEffect(() => {
+    wheelStateRef.current = { current, clampOffset, setCurrent };
+  }, [current, clampOffset, setCurrent]);
+
+  // 用原生 addEventListener 注册 wheel，并显式声明 { passive: false } 以便 preventDefault 生效
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const { current: c, clampOffset: clamp, setCurrent: set } = wheelStateRef.current;
+      const delta = -e.deltaY * 0.002;
+      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, c.zoom + delta));
+      const next = clamp(c.offset.x, c.offset.y);
+      set((s) => ({ ...s, zoom: newZoom, offset: next }));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   // 生成圆形裁剪图（透明背景 PNG）
   const generateCircleCrop = useCallback((): string => {
@@ -287,13 +301,13 @@ export default function AvatarCropModal({ imageSrc, onClose, onSave }: AvatarCro
         <div className="avatar-crop-body">
           <div className="avatar-crop-left">
             <div
+              ref={containerRef}
               className={`avatar-crop-container ${activeTab === 'circle' ? 'is-circle' : 'is-rect'}`}
               style={{ width: containerW, height: containerH }}
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
               onPointerCancel={handlePointerUp}
-              onWheel={handleWheel}
             >
               {naturalSize.w > 0 && (
                 <img
