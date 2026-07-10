@@ -24,19 +24,6 @@
 - **行政区划联动** — 内置全国省/市/县/乡镇四级数据，出生地选择更便捷
 - **本地存储** — 数据存储在本地，无需联网
 
-## 技术栈
-
-| 技术 | 用途 |
-|------|------|
-| [Tauri v2](https://tauri.app/) | 桌面应用框架（Rust 后端） |
-| [React 19](https://react.dev/) | 前端 UI 框架 |
-| [TypeScript 6](https://www.typescriptlang.org/) | 类型安全 |
-| [Vite 8](https://vitejs.dev/) | 构建工具 |
-| [Zustand 5](https://zustand.docs.pmnd.rs/) | 状态管理 |
-| [React Router v7](https://reactrouter.com/) | 路由管理 |
-| [@xyflow/react](https://reactflow.dev/) | 家族树图谱渲染 |
-| [lunar-javascript](https://6tail.cn/lunar-calendar/) | 农历/公历转换 |
-
 ## 项目结构
 
 ```

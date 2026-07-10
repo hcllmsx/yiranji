@@ -52,5 +52,4 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           name: '以苒纪 ${{ github.ref_name }}'
-          body: '见下方 Assets 下载安装包。'
           files: src-tauri/target/release/bundle/nsis/yiranji_${{ github.ref_name }}_x64-setup.exe
