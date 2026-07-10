@@ -84,6 +84,33 @@ npm run dev
 
 打包后的安装包位于 `src-tauri/target/release/bundle/nsis/` 目录下。
 
+### 清除构建缓存
+
+#### 1. 清除 Rust 后端编译缓存（最常用）
+清除 `src-tauri` 目录下的 Rust 编译缓存，可以使用以下命令：
+
+在 `src-tauri` 目录下执行：
+```bash
+cargo clean
+```
+或者在项目根目录下直接执行：
+```bash
+cargo clean --manifest-path src-tauri/Cargo.toml
+```
+这会删除 `src-tauri/target` 目录下的所有构建产物和临时缓存，下次运行 `tauri dev` 或 `build` 时会进行完整的重新编译。
+
+---
+
+### 2. 清除前端 Vite 预编译缓存
+如果您需要清除前端的构建缓存，可以手动删除项目根目录下的缓存文件夹：
+```bash
+# Windows cmd
+rmdir /s /q node_modules\.vite
+
+# PowerShell
+Remove-Item -Recurse -Force node_modules/.vite
+```
+
 ## 鸣谢
 
 - **行政区划数据** — 来自 [xiangyuecn/AreaCity-JsSpider-StatsGov](https://github.com/xiangyuecn/AreaCity-JsSpider-StatsGov)，包含省/市/县/乡镇四级数据
