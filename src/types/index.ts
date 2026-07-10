@@ -101,12 +101,14 @@ export interface Person {
 
   isAlive: boolean;
   birthPlace?: string;
+  residencePlace?: string;     // 居住地
   bio?: string;               // 个人简介
 
   // 头像
   avatar?: string;            // 头像路径（圆形裁剪，用于家谱树/列表展示）
   avatarRect?: string;        // 头像原始图片路径（矩形/正方形，用于个人信息页左侧展示）
   avatarPhotoDate?: string;   // 头像拍摄日期 YYYY-MM-DD
+  avatarRectPhotoDate?: string; // 形象照拍摄日期 YYYY-MM-DD
 
   // 媒体文件
   photos: Photo[];

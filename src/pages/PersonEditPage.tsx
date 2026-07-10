@@ -50,14 +50,25 @@ export default function PersonEditPage() {
   const [placeArea, setPlaceArea] = useState('');
   const [placeTown, setPlaceTown] = useState('');
   const [placeDetail, setPlaceDetail] = useState('');
+  // 居住地拆分：省 / 市 / 县区 / 乡镇 / 详细地址
+  const [residenceProvince, setResidenceProvince] = useState('');
+  const [residenceCity, setResidenceCity] = useState('');
+  const [residenceArea, setResidenceArea] = useState('');
+  const [residenceTown, setResidenceTown] = useState('');
+  const [residenceDetail, setResidenceDetail] = useState('');
   const [bio, setBio] = useState('');
   const [avatar, setAvatar] = useState<string | undefined>();
   const [avatarRect, setAvatarRect] = useState<string | undefined>();
   const [avatarPhotoDate, setAvatarPhotoDate] = useState('');
+  const [avatarRectPhotoDate, setAvatarRectPhotoDate] = useState('');
   const [newAvatarBase64, setNewAvatarBase64] = useState<string | null>(null);
   const [newAvatarRectBase64, setNewAvatarRectBase64] = useState<string | null>(null);
   const [cropModalImage, setCropModalImage] = useState<string | null>(null);
+  const [cropMode, setCropMode] = useState<'circle' | 'rect'>('circle');
+  const [avatarSource, setAvatarSource] = useState<string | undefined>(); // 暂存圆形头像刚刚上传的原图
+  const [avatarRectSource, setAvatarRectSource] = useState<string | undefined>(); // 暂存方形形象照刚刚上传的原图
   const [avatarToDelete, setAvatarToDelete] = useState<boolean>(false);
+  const [avatarRectToDelete, setAvatarRectToDelete] = useState<boolean>(false);
 
   // 关系状态
   const [fatherId, setFatherId] = useState<string>('');
@@ -200,11 +211,20 @@ export default function PersonEditPage() {
       setPlaceArea(parts[2] || '');
       setPlaceTown(parts[3] || '');
       setPlaceDetail(parts.slice(4).join(' ') || '');
+      // 拆分居住地字符串到多级下拉框 + 详细地址
+      const resParts = (existingPerson.residencePlace || '').split(' ');
+      setResidenceProvince(resParts[0] || '');
+      setResidenceCity(resParts[1] || '');
+      setResidenceArea(resParts[2] || '');
+      setResidenceTown(resParts[3] || '');
+      setResidenceDetail(resParts.slice(4).join(' ') || '');
       setBio(existingPerson.bio || '');
       setAvatar(existingPerson.avatar);
       setAvatarRect(existingPerson.avatarRect);
       setAvatarPhotoDate(existingPerson.avatarPhotoDate || '');
+      setAvatarRectPhotoDate(existingPerson.avatarRectPhotoDate || '');
       setAvatarToDelete(false);
+      setAvatarRectToDelete(false);
       setNewAvatarBase64(null);
       setNewAvatarRectBase64(null);
       let initFatherId = existingPerson.relations.father || '';
@@ -293,13 +313,45 @@ export default function PersonEditPage() {
     }
   }, [existingPerson, handleSolarChange]);
 
-  // 头像上传 - 选择文件后打开裁剪弹窗
-  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 触发系统文件选择或直接打开裁剪 Modal
+  const handleImageClick = (mode: 'circle' | 'rect') => () => {
+    // 检查是否有任何一侧图片已存在（物理已存或新传 Base64 均可）
+    const selfImage = mode === 'circle' ? (avatarSource || avatar) : (avatarRectSource || avatarRect);
+    const otherImage = mode === 'circle' ? (avatarRectSource || avatarRect) : (avatarSource || avatar);
+    const anyImageExists = !!(selfImage || otherImage);
+
+    if (anyImageExists) {
+      // 开启裁剪 Modal 模式
+      setCropMode(mode);
+      // 优先取自己这侧的原图，自己这侧没有则取另一侧的原文件路径进行加载
+      const rawSource = selfImage || otherImage!;
+      
+      if (rawSource.startsWith('data:')) {
+        setCropModalImage(rawSource);
+      } else {
+        // 如果是物理文件路径，智能追踪原图 original.jpg 的物理位置并加载
+        setCropModalImage(convertLocalSrc(getOriginalImageSrc(rawSource)));
+      }
+    } else {
+      // 一张照片都还没有，正常触发系统文件选择框
+      const inputId = mode === 'circle' ? 'avatar-circle-upload' : 'avatar-rect-upload';
+      document.getElementById(inputId)?.click();
+    }
+  };
+
+  // 照片上传 - 选择文件后打开裁剪弹窗
+  const handleImageUpload = (mode: 'circle' | 'rect') => (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = reader.result as string;
+      if (mode === 'circle') {
+        setAvatarSource(base64);
+      } else {
+        setAvatarRectSource(base64);
+      }
+      setCropMode(mode);
       setCropModalImage(base64);
     };
     reader.readAsDataURL(file);
@@ -307,23 +359,65 @@ export default function PersonEditPage() {
   };
 
   // 裁剪确认后回调
-  const handleCropSave = (circleDataUrl: string, rectDataUrl: string) => {
-    setAvatar(circleDataUrl);
-    setNewAvatarBase64(circleDataUrl);
-    setAvatarRect(rectDataUrl);
-    setNewAvatarRectBase64(rectDataUrl);
-    setAvatarToDelete(false);
+  const handleCropSave = (circleDataUrl: string, rectDataUrl: string, newOriginalSource?: string) => {
+    if (cropMode === 'circle') {
+      setAvatar(circleDataUrl);
+      setNewAvatarBase64(circleDataUrl);
+      setAvatarToDelete(false);
+      if (newOriginalSource) {
+        setAvatarSource(newOriginalSource);
+      }
+    } else {
+      setAvatarRect(rectDataUrl);
+      setNewAvatarRectBase64(rectDataUrl);
+      setAvatarRectToDelete(false);
+      if (newOriginalSource) {
+        setAvatarRectSource(newOriginalSource);
+      }
+    }
     setCropModalImage(null);
   };
 
-  // 删除头像
+  // 删除圆形头像
   const handleDeleteAvatar = () => {
     setAvatar(undefined);
-    setAvatarRect(undefined);
     setNewAvatarBase64(null);
-    setNewAvatarRectBase64(null);
+    setAvatarSource(undefined);
     setAvatarPhotoDate('');
     setAvatarToDelete(true);
+  };
+
+  // 删除方形形象照
+  const handleDeleteAvatarRect = () => {
+    setAvatarRect(undefined);
+    setNewAvatarRectBase64(null);
+    setAvatarRectSource(undefined);
+    setAvatarRectToDelete(true);
+  };
+
+  // 智能转换：若已存路径指向 cropped 裁剪图，则在重新裁剪时尝试拉取同一目录下的 original 原图以防止画质受损
+  const getOriginalImageSrc = (croppedPath: string | undefined): string => {
+    if (!croppedPath) return '';
+    if (croppedPath.includes('cropped.')) {
+      return croppedPath.replace(/cropped\.(jpg|png|jpeg|webp)/i, 'original.$1');
+    }
+    return croppedPath;
+  };
+
+  // 重新裁剪圆形头像
+  const handleRecropAvatar = () => {
+    const source = avatarSource || avatar;
+    if (!source) return;
+    setCropMode('circle');
+    setCropModalImage(avatarSource || convertLocalSrc(getOriginalImageSrc(avatar)));
+  };
+
+  // 重新裁剪方形形象照
+  const handleRecropAvatarRect = () => {
+    const source = avatarRectSource || avatarRect;
+    if (!source) return;
+    setCropMode('rect');
+    setCropModalImage(avatarRectSource || convertLocalSrc(getOriginalImageSrc(avatarRect)));
   };
 
   // 保存数据
@@ -350,14 +444,22 @@ export default function PersonEditPage() {
           ext = match[1] === 'jpeg' ? 'jpg' : match[1];
         }
 
-        // 以随机 UUID 命名生成不冲突的文件名
+        // 以随机 UUID 命名生成独立子目录名
         const randomId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
-        const filename = `avatar_${randomId}.${ext}`;
+        const dirName = `avatar_${randomId}_circle`;
+        
+        // 1. 保存原图（如果存在）
+        if (avatarSource) {
+          const originalFilename = `${dirName}/original.${ext}`;
+          await saveMediaFile(workspacePath, originalFilename, avatarSource);
+        }
 
-        await saveMediaFile(workspacePath, filename, newAvatarBase64);
+        // 2. 保存裁剪后的图
+        const croppedFilename = `${dirName}/cropped.${ext}`;
+        await saveMediaFile(workspacePath, croppedFilename, newAvatarBase64);
 
-        // 绑定物理路径
-        finalAvatar = `${workspacePath}/media/${filename}`;
+        // 绑定裁剪图物理路径
+        finalAvatar = `${workspacePath}/media/${croppedFilename}`;
       } catch (err) {
         console.error('物理写入头像文件失败:', err);
       }
@@ -373,27 +475,33 @@ export default function PersonEditPage() {
         }
 
         const randomId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
-        const filename = `avatar_rect_${randomId}.${ext}`;
+        const dirName = `avatar_${randomId}_rect`;
 
-        await saveMediaFile(workspacePath, filename, newAvatarRectBase64);
+        // 1. 保存原图（使用方形专属原图或从圆形头像同步过来的原图）
+        const rectSourceBase64 = avatarRectSource || avatarSource;
+        if (rectSourceBase64) {
+          const originalFilename = `${dirName}/original.${ext}`;
+          await saveMediaFile(workspacePath, originalFilename, rectSourceBase64);
+        }
 
-        finalAvatarRect = `${workspacePath}/media/${filename}`;
+        // 2. 保存裁剪后的形象大图
+        const croppedFilename = `${dirName}/cropped.${ext}`;
+        await saveMediaFile(workspacePath, croppedFilename, newAvatarRectBase64);
+
+        finalAvatarRect = `${workspacePath}/media/${croppedFilename}`;
       } catch (err) {
         console.error('物理写入矩形头像文件失败:', err);
       }
     }
 
-    // 删除旧头像物理文件（如果用户主动删除了头像）
+    // 删除圆形头像物理文件（如果用户主动删除了圆形头像）
     if (avatarToDelete && existingPerson && isTauri() && workspacePath) {
       try {
         if (existingPerson.avatar && !existingPerson.avatar.startsWith('data:')) {
           await deleteMediaFile(workspacePath, existingPerson.avatar).catch(() => {});
         }
-        if (existingPerson.avatarRect && !existingPerson.avatarRect.startsWith('data:')) {
-          await deleteMediaFile(workspacePath, existingPerson.avatarRect).catch(() => {});
-        }
       } catch (err) {
-        console.error('删除旧头像文件失败:', err);
+        console.error('删除旧圆形头像文件失败:', err);
       }
     } else if (
       !avatarToDelete &&
@@ -405,14 +513,38 @@ export default function PersonEditPage() {
       existingPerson.avatar !== finalAvatar &&
       !existingPerson.avatar.startsWith('data:')
     ) {
-      // 用户重新上传了新头像，且与旧头像不同，则删除旧头像物理文件
+      // 用户重新上传了新圆形头像，且与旧不同，则删除旧文件
       try {
         await deleteMediaFile(workspacePath, existingPerson.avatar).catch(() => {});
+      } catch (err) {
+        console.error('删除更替的旧圆形头像失败:', err);
+      }
+    }
+
+    // 删除方形形象照物理文件（如果用户主动删除了方形形象照）
+    if (avatarRectToDelete && existingPerson && isTauri() && workspacePath) {
+      try {
         if (existingPerson.avatarRect && !existingPerson.avatarRect.startsWith('data:')) {
           await deleteMediaFile(workspacePath, existingPerson.avatarRect).catch(() => {});
         }
       } catch (err) {
-        console.error('删除旧头像文件失败:', err);
+        console.error('删除旧方形形象照文件失败:', err);
+      }
+    } else if (
+      !avatarRectToDelete &&
+      existingPerson &&
+      isTauri() &&
+      workspacePath &&
+      existingPerson.avatarRect &&
+      newAvatarRectBase64 &&
+      existingPerson.avatarRect !== finalAvatarRect &&
+      !existingPerson.avatarRect.startsWith('data:')
+    ) {
+      // 用户重新上传了新方形形象照，且与旧不同，则删除旧文件
+      try {
+        await deleteMediaFile(workspacePath, existingPerson.avatarRect).catch(() => {});
+      } catch (err) {
+        console.error('删除更替的旧方形形象照失败:', err);
       }
     }
 
@@ -565,10 +697,12 @@ export default function PersonEditPage() {
       deathTimePrecision,
       isAlive,
       birthPlace: [placeProvince, placeCity, placeArea, placeTown, placeDetail].filter(Boolean).join(' ') || undefined,
+      residencePlace: [residenceProvince, residenceCity, residenceArea, residenceTown, residenceDetail].filter(Boolean).join(' ') || undefined,
       bio: bio || undefined,
       avatar: finalAvatar,
       avatarRect: finalAvatarRect,
       avatarPhotoDate: avatarPhotoDate || undefined,
+      avatarRectPhotoDate: avatarRectPhotoDate || undefined,
       relations: {
         father: finalFatherId || undefined,
         mother: finalMotherId || undefined,
@@ -690,6 +824,9 @@ export default function PersonEditPage() {
   const photoAgeText = calculatedBirthSolarStr && avatarPhotoDate
     ? calculatePhotoAge(calculatedBirthSolarStr, avatarPhotoDate)
     : null;
+  const rectPhotoAgeText = calculatedBirthSolarStr && avatarRectPhotoDate
+    ? calculatePhotoAge(calculatedBirthSolarStr, avatarRectPhotoDate)
+    : null;
 
   const [showRelationMenu, setShowRelationMenu] = useState<boolean>(false);
 
@@ -796,51 +933,127 @@ export default function PersonEditPage() {
         </div>
       </div>
 
-      {/* 头像区域 */}
-      <div className="avatar-upload-section">
-        <div className="avatar-upload-wrapper">
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleAvatarUpload}
-            style={{ display: 'none' }}
-            id="avatar-upload"
-          />
-          <label htmlFor="avatar-upload" style={{ cursor: 'pointer' }}>
-            {avatar ? (
-              <img src={convertLocalSrc(avatar)} alt="头像" className="avatar-preview" />
-            ) : (
-              <div className="avatar-upload-placeholder">
-                <span className="upload-icon">📷</span>
-                <span>上传照片</span>
+      {/* 头像与形象照设置区域 */}
+      <div className="avatar-double-section">
+        {/* 左侧：圆形头像 */}
+        <div className="avatar-col">
+          <div className="avatar-col-title">圆形头像（家谱树/人员列表）</div>
+          <div className="avatar-upload-wrapper">
+            <div className="avatar-image-inner circle">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload('circle')}
+                style={{ display: 'none' }}
+                id="avatar-circle-upload"
+              />
+              <div onClick={handleImageClick('circle')} style={{ cursor: 'pointer', height: '100%', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {avatar ? (
+                  <img src={convertLocalSrc(avatar)} alt="圆形头像" className="avatar-preview" />
+                ) : (
+                  <div className="avatar-upload-placeholder">
+                    <span className="upload-icon">📷</span>
+                    <span>选择圆形头像</span>
+                  </div>
+                )}
               </div>
-            )}
-          </label>
-          {avatar && (
-            <button
-              type="button"
-              className="avatar-delete-btn"
-              title="删除头像"
-              onClick={handleDeleteAvatar}
-            >
-              ×
-            </button>
+              {avatar && (
+                <>
+                  <button
+                    type="button"
+                    className="avatar-recrop-btn"
+                    title="重新选择裁剪区域"
+                    onClick={handleRecropAvatar}
+                  >
+                    ⛶
+                  </button>
+                  <button
+                    type="button"
+                    className="avatar-delete-btn"
+                    title="删除头像"
+                    onClick={handleDeleteAvatar}
+                  >
+                    ×
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="avatar-photo-date">
+            <span>拍摄于</span>
+            <input
+              type="date"
+              value={avatarPhotoDate}
+              onChange={(e) => setAvatarPhotoDate(e.target.value)}
+            />
+          </div>
+          {photoAgeText && (
+            <div className="avatar-age-tag">
+              📷 {photoAgeText}时的照片
+            </div>
           )}
         </div>
 
-        <div className="avatar-photo-date">
-          <span>拍摄于</span>
-          <input
-            type="date"
-            value={avatarPhotoDate}
-            onChange={(e) => setAvatarPhotoDate(e.target.value)}
-          />
-        </div>
-        {photoAgeText && (
-          <div className="avatar-age-tag">
-            📷 {photoAgeText}时的照片
+        {/* 右侧：方形形象照 */}
+        <div className="avatar-col">
+          <div className="avatar-col-title">形象大图（个人资料页顶端）</div>
+          <div className="avatar-upload-wrapper">
+            <div className="avatar-image-inner rect">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload('rect')}
+                style={{ display: 'none' }}
+                id="avatar-rect-upload"
+              />
+              <div onClick={handleImageClick('rect')} style={{ cursor: 'pointer', height: '100%', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {avatarRect ? (
+                  <img src={convertLocalSrc(avatarRect)} alt="形象大图" className="avatar-rect-preview" />
+                ) : (
+                  <div className="avatar-rect-placeholder">
+                    <span className="upload-icon">🖼️</span>
+                    <span>选择形象照</span>
+                  </div>
+                )}
+              </div>
+              {avatarRect && (
+                <>
+                  <button
+                    type="button"
+                    className="avatar-recrop-btn"
+                    title="重新选择裁剪区域"
+                    onClick={handleRecropAvatarRect}
+                  >
+                    ⛶
+                  </button>
+                  <button
+                    type="button"
+                    className="avatar-delete-btn"
+                    title="删除形象照"
+                    onClick={handleDeleteAvatarRect}
+                  >
+                    ×
+                  </button>
+                </>
+              )}
+            </div>
           </div>
-        )}
+
+          <div className="avatar-photo-date">
+            <span>拍摄于</span>
+            <input
+              type="date"
+              value={avatarRectPhotoDate}
+              onChange={(e) => setAvatarRectPhotoDate(e.target.value)}
+            />
+          </div>
+          {rectPhotoAgeText && (
+            <div className="avatar-age-tag">
+              📷 {rectPhotoAgeText}时的照片
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 基本信息 */}
@@ -1335,6 +1548,103 @@ export default function PersonEditPage() {
             )}
           </div>
         </div>
+
+        <div className="form-group">
+          <label className="form-label">居住地</label>
+          <div className="form-row" style={{ flexWrap: 'wrap' }}>
+            <select
+              className="form-input"
+              value={residenceProvince}
+              onChange={(e) => {
+                setResidenceProvince(e.target.value);
+                setResidenceCity('');
+                setResidenceArea('');
+                setResidenceTown('');
+              }}
+              style={{ flex: '1 1 120px' }}
+            >
+              <option value="">选择省份</option>
+              <option disabled>──────</option>
+              {Object.keys(REGIONS)
+                .filter(p => p !== '国外')
+                .map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              <option disabled>──────</option>
+              <option value="国外">国外</option>
+            </select>
+            {residenceProvince === '国外' ? (
+              <input
+                type="text"
+                className="form-input"
+                value={residenceDetail}
+                onChange={(e) => setResidenceDetail(e.target.value)}
+                placeholder="国家/地区 + 详细地址"
+                style={{ flex: '3 1 360px' }}
+              />
+            ) : (
+              <>
+                <select
+                  className="form-input"
+                  value={residenceCity}
+                  onChange={(e) => {
+                    setResidenceCity(e.target.value);
+                    setResidenceArea('');
+                    setResidenceTown('');
+                  }}
+                  disabled={!residenceProvince}
+                  style={{ flex: '1 1 120px' }}
+                >
+                  <option value="">选择市/州</option>
+                  <option disabled>──────</option>
+                  {residenceProvince && REGIONS[residenceProvince] &&
+                    Object.keys(REGIONS[residenceProvince]).map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                </select>
+                <select
+                  className="form-input"
+                  value={residenceArea}
+                  onChange={(e) => {
+                    setResidenceArea(e.target.value);
+                    setResidenceTown('');
+                  }}
+                  disabled={!residenceCity}
+                  style={{ flex: '1 1 120px' }}
+                >
+                  <option value="">选择县/区</option>
+                  <option disabled>──────</option>
+                  {residenceProvince && residenceCity && REGIONS[residenceProvince]?.[residenceCity] &&
+                    Object.keys(REGIONS[residenceProvince][residenceCity]).map((a) => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
+                </select>
+                <select
+                  className="form-input"
+                  value={residenceTown}
+                  onChange={(e) => setResidenceTown(e.target.value)}
+                  disabled={!residenceArea}
+                  style={{ flex: '1 1 120px' }}
+                >
+                  <option value="">选择乡镇/街道</option>
+                  <option disabled>──────</option>
+                  {residenceProvince && residenceCity && residenceArea &&
+                    REGIONS[residenceProvince]?.[residenceCity]?.[residenceArea]?.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                </select>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={residenceDetail}
+                  onChange={(e) => setResidenceDetail(e.target.value)}
+                  placeholder="详细地址（村/路/门牌号，选填）"
+                  style={{ flex: '2 1 240px' }}
+                />
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* 关系选择 */}
@@ -1685,6 +1995,12 @@ export default function PersonEditPage() {
           imageSrc={cropModalImage}
           onClose={() => setCropModalImage(null)}
           onSave={handleCropSave}
+          initTab={cropMode}
+          syncSourceImage={
+            cropMode === 'circle'
+              ? (avatarRectSource || getOriginalImageSrc(avatarRect))
+              : (avatarSource || getOriginalImageSrc(avatar))
+          }
         />
       )}
 

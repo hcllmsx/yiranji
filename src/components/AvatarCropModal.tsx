@@ -1,26 +1,27 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { lockBodyScroll } from '../utils/bodyScrollLock';
+import { convertLocalSrc } from '../utils/tauri';
 import './AvatarCropModal.css';
 
 interface AvatarCropModalProps {
   imageSrc: string;
   onClose: () => void;
-  onSave: (circleDataUrl: string, rectDataUrl: string) => void;
+  onSave: (circleDataUrl: string, rectDataUrl: string, newOriginalSource?: string) => void;
+  initTab?: 'circle' | 'rect';
+  syncSourceImage?: string;
 }
 
 // 圆形裁剪：正方形容器
 const CIRCLE_CONTAINER = 320;
-const CIRCLE_OUTPUT = 256;
+const CIRCLE_OUTPUT = 512;
 // 矩形裁剪：4:5 竖向容器（适配个人信息页头像比例）
 const RECT_CONTAINER_W = 256;
 const RECT_CONTAINER_H = 320;
-const RECT_OUTPUT_W = 320;
-const RECT_OUTPUT_H = 400;
+const RECT_OUTPUT_W = 1200;
+const RECT_OUTPUT_H = 1500;
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
-
-type CropTab = 'circle' | 'rect';
 
 interface CropState {
   offset: { x: number; y: number };
@@ -28,15 +29,20 @@ interface CropState {
   fitScale: number;
 }
 
-export default function AvatarCropModal({ imageSrc, onClose, onSave }: AvatarCropModalProps) {
+export default function AvatarCropModal({ imageSrc, onClose, onSave, initTab = 'circle', syncSourceImage }: AvatarCropModalProps) {
   const imgRef = useRef<HTMLImageElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // 当前进行裁剪的预览图 (可以是带协议的物理图、Base64 或带协议的同步图)
+  const [currentImageSrc, setCurrentImageSrc] = useState(imageSrc);
+  // 记录本次裁剪最终采用的原图数据 (用于在保存时传递给 PersonEditPage 做原图持久化备份)
+  const [originalSource, setOriginalSource] = useState<string | undefined>();
 
   // 图片原始尺寸
   const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
 
   // 当前激活的裁剪 Tab
-  const [activeTab, setActiveTab] = useState<CropTab>('circle');
+  const activeTab = initTab;
 
   // 圆形裁剪状态
   const [circleState, setCircleState] = useState<CropState>({
@@ -58,6 +64,7 @@ export default function AvatarCropModal({ imageSrc, onClose, onSave }: AvatarCro
   // 加载图片得到原始尺寸，并初始化两个裁剪的 fitScale
   useEffect(() => {
     const img = new Image();
+    img.crossOrigin = 'anonymous';
     img.onload = () => {
       const w = img.naturalWidth;
       const h = img.naturalHeight;
@@ -73,8 +80,8 @@ export default function AvatarCropModal({ imageSrc, onClose, onSave }: AvatarCro
         fitScale: Math.max(RECT_CONTAINER_W / w, RECT_CONTAINER_H / h),
       });
     };
-    img.src = imageSrc;
-  }, [imageSrc]);
+    img.src = currentImageSrc;
+  }, [currentImageSrc]);
 
   // ESC 关闭弹窗
   useEffect(() => {
@@ -239,17 +246,42 @@ export default function AvatarCropModal({ imageSrc, onClose, onSave }: AvatarCro
         RECT_OUTPUT_H
       );
     }
-    return canvas.toDataURL('image/jpeg', 0.92);
+    return canvas.toDataURL('image/jpeg', 0.98);
   }, [naturalSize, rectState]);
+
+  const localInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleSave = () => {
     const circleDataUrl = generateCircleCrop();
     const rectDataUrl = generateRectCrop();
     if (circleDataUrl && rectDataUrl) {
-      onSave(circleDataUrl, rectDataUrl);
-    } else if (circleDataUrl) {
-      onSave(circleDataUrl, imageSrc);
+      onSave(circleDataUrl, rectDataUrl, originalSource || undefined);
     }
+  };
+
+  // 选择本地文件并作为裁剪源
+  const handleLocalUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result as string;
+      setOriginalSource(base64);
+      setCurrentImageSrc(base64);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleLocalUploadClick = () => {
+    localInputRef.current?.click();
+  };
+
+  // 直接在 Modal 内部同步另一张图的原图
+  const handleSyncImage = () => {
+    if (!syncSourceImage) return;
+    setOriginalSource(syncSourceImage);
+    setCurrentImageSrc(syncSourceImage.startsWith('data:') ? syncSourceImage : convertLocalSrc(syncSourceImage));
   };
 
   const handleZoomChange = (val: number) => {
@@ -275,26 +307,9 @@ export default function AvatarCropModal({ imageSrc, onClose, onSave }: AvatarCro
     <div className="avatar-crop-overlay" onClick={onClose}>
       <div className="avatar-crop-modal" onClick={(e) => e.stopPropagation()}>
         <div className="avatar-crop-modal-header">
-          <h3>选取头像</h3>
+          <h3>{activeTab === 'circle' ? '选取圆形头像' : '选取形象大图'}</h3>
           <button type="button" className="avatar-crop-close-btn" onClick={onClose}>
             ×
-          </button>
-        </div>
-
-        <div className="avatar-crop-tabs">
-          <button
-            type="button"
-            className={`avatar-crop-tab ${activeTab === 'circle' ? 'active' : ''}`}
-            onClick={() => setActiveTab('circle')}
-          >
-            圆形头像 · 家谱树
-          </button>
-          <button
-            type="button"
-            className={`avatar-crop-tab ${activeTab === 'rect' ? 'active' : ''}`}
-            onClick={() => setActiveTab('rect')}
-          >
-            矩形头像 · 个人信息页
           </button>
         </div>
 
@@ -312,9 +327,10 @@ export default function AvatarCropModal({ imageSrc, onClose, onSave }: AvatarCro
               {naturalSize.w > 0 && (
                 <img
                   ref={imgRef}
-                  src={imageSrc}
+                  src={currentImageSrc}
                   alt="待裁剪"
                   className="avatar-crop-image"
+                  crossOrigin="anonymous"
                   style={{
                     width: displayW,
                     height: displayH,
@@ -358,30 +374,62 @@ export default function AvatarCropModal({ imageSrc, onClose, onSave }: AvatarCro
           </div>
 
           <div className="avatar-crop-right">
-            <div className="avatar-crop-preview-section">
-              <div className="avatar-crop-preview-title">家谱树头像（圆形）</div>
-              <div className="avatar-crop-preview-circle">
-                {previewCircleSrc && <img src={previewCircleSrc} alt="圆形头像预览" />}
+            {activeTab === 'circle' ? (
+              <div className="avatar-crop-preview-section">
+                <div className="avatar-crop-preview-title">家谱树头像（圆形）</div>
+                <div className="avatar-crop-preview-circle">
+                  {previewCircleSrc && <img src={previewCircleSrc} alt="圆形头像预览" />}
+                </div>
+                <div className="avatar-crop-preview-desc">
+                  用于家谱树、人员列表中的圆形头像显示
+                </div>
               </div>
-              <div className="avatar-crop-preview-desc">
-                用于家谱树、人员列表中的圆形头像显示
+            ) : (
+              <div className="avatar-crop-preview-section">
+                <div className="avatar-crop-preview-title">个人信息页大图（4:5）</div>
+                <div className="avatar-crop-preview-rect">
+                  {previewRectSrc && <img src={previewRectSrc} alt="形象大图预览" />}
+                </div>
+                <div className="avatar-crop-preview-desc">
+                  用于个人信息页顶部大海报展示，可独立选取裁剪区域
+                </div>
               </div>
-            </div>
-
-            <div className="avatar-crop-preview-section">
-              <div className="avatar-crop-preview-title">个人信息页头像（矩形 4:5）</div>
-              <div className="avatar-crop-preview-rect">
-                {previewRectSrc && <img src={previewRectSrc} alt="矩形头像预览" />}
-              </div>
-              <div className="avatar-crop-preview-desc">
-                用于个人信息页左侧整图显示，可独立选取区域
-              </div>
-            </div>
+            )}
           </div>
         </div>
 
         <div className="avatar-crop-footer">
-          <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
+          {/* 隐藏的本地选图 input */}
+          <input
+            type="file"
+            ref={localInputRef}
+            onChange={handleLocalUpload}
+            accept="image/*"
+            style={{ display: 'none' }}
+          />
+
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={handleLocalUploadClick}
+            title="从本地电脑上传一张新照片"
+          >
+            📂 选择本地照片
+          </button>
+
+          {syncSourceImage && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              style={{ marginRight: 'auto', marginLeft: '8px' }}
+              onClick={handleSyncImage}
+              title="直接拉取另一侧的照片进行裁剪，实现快捷同步"
+            >
+              🔄 同步已有照片
+            </button>
+          )}
+          
+          <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft: syncSourceImage ? '0' : 'auto' }} onClick={onClose}>
             取消
           </button>
           <button type="button" className="btn btn-primary btn-sm" onClick={handleSave}>

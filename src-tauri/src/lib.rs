@@ -87,8 +87,14 @@ fn save_media_file(workspace_path: String, filename: String, base64_data: String
     fs::create_dir_all(&media_dir)
         .map_err(|e| format!("创建 media 文件夹失败: {}", e))?;
 
-    let media_path = format!("{}/{}", media_dir, filename);
-    fs::write(&media_path, binary_data)
+    // 拼装目标文件绝对路径，并自动递归创建其所在的子目录
+    let target_path = PathBuf::from(&media_dir).join(&filename);
+    if let Some(parent) = target_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("创建媒体子文件夹失败: {}", e))?;
+    }
+
+    fs::write(&target_path, binary_data)
         .map_err(|e| format!("写入媒体文件失败: {}", e))?;
         
     Ok(())
@@ -103,6 +109,7 @@ fn delete_media_file(workspace_path: String, media_path: String) -> Result<(), S
     let media_dir = media_dir
         .canonicalize()
         .map_err(|e| format!("解析 media 文件夹失败: {}", e))?;
+
     let file_path = PathBuf::from(&media_path);
 
     if !file_path.exists() {
@@ -115,6 +122,19 @@ fn delete_media_file(workspace_path: String, media_path: String) -> Result<(), S
 
     if !file_path.starts_with(&media_dir) {
         return Err("只能删除当前工作区 media 目录下的文件".to_string());
+    }
+
+    // 智能清理：如果被删除的文件是在以 "avatar_" 开头的专属头像子目录下，直接物理删除整个文件夹
+    if file_path.is_file() {
+        if let Some(parent) = file_path.parent() {
+            if let Some(dir_name) = parent.file_name().and_then(|n| n.to_str()) {
+                if dir_name.starts_with("avatar_") {
+                    fs::remove_dir_all(parent)
+                        .map_err(|e| format!("删除头像文件夹失败: {}", e))?;
+                    return Ok(());
+                }
+            }
+        }
     }
 
     fs::remove_file(&file_path)

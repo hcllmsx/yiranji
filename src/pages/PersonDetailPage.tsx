@@ -500,6 +500,10 @@ export default function PersonDetailPage() {
     return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
   };
 
+  const photoDateToUse = person.avatarRect
+    ? person.avatarRectPhotoDate
+    : person.avatarPhotoDate;
+
   return (
     <div className="person-detail-page">
       {/* 头部信息 */}
@@ -513,6 +517,7 @@ export default function PersonDetailPage() {
               className="rect-avatar-img"
             />
           ) : person.avatar ? (
+            // 圆形头像视图
             <img
               src={convertLocalSrc(person.avatar)}
               alt={fullName}
@@ -523,9 +528,9 @@ export default function PersonDetailPage() {
               {person.surname}
             </div>
           )}
-          {person.avatarPhotoDate && person.birthDateSolar && (
+          {photoDateToUse && person.birthDateSolar && (
             <div className="person-detail-photo-age">
-              📷 {calculatePhotoAge(person.birthDateSolar, person.avatarPhotoDate)}时
+              📷 {calculatePhotoAge(person.birthDateSolar, photoDateToUse)}时
             </div>
           )}
         </div>
@@ -593,6 +598,15 @@ export default function PersonDetailPage() {
                 <div className="info-text-group">
                   <span className="info-label">出生地</span>
                   <span className="info-value">{person.birthPlace}</span>
+                </div>
+              </div>
+            )}
+            {person.residencePlace && (
+              <div className="info-item info-item-full">
+                <div className="icon-box">🏠</div>
+                <div className="info-text-group">
+                  <span className="info-label">居住地</span>
+                  <span className="info-value">{person.residencePlace}</span>
                 </div>
               </div>
             )}
