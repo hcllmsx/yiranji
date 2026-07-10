@@ -14,7 +14,8 @@ import {
 import { Lunar } from 'lunar-javascript';
 import { isTauri, convertLocalSrc, saveMediaFile, deleteMediaFile } from '../utils/tauri';
 import AvatarCropModal from '../components/AvatarCropModal';
-import type { Person, Gender, LunarDate } from '../types';
+import type { Person, Gender, LunarDate, SpouseRelationType } from '../types';
+import { getAdoptiveFathers, getAdoptiveMothers } from '../types';
 import chinaRegions from '../data/china-regions.json';
 import './PersonEditPage.css';
 
@@ -32,7 +33,7 @@ const REGIONS = chinaRegions as ChinaRegions;
 export default function PersonEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { project, getPerson, updatePerson, addPerson, getPersonsList } = useFamilyStore();
+  const { project, getPerson, updatePerson, addPerson, getPersonsList, addSpouse, removeSpouse } = useFamilyStore();
 
   const isNew = id === 'new';
   const existingPerson = id && !isNew ? getPerson(id) : undefined;
@@ -61,13 +62,17 @@ export default function PersonEditPage() {
   // 关系状态
   const [fatherId, setFatherId] = useState<string>('');
   const [motherId, setMotherId] = useState<string>('');
-  const [adoptiveFatherId, setAdoptiveFatherId] = useState<string>('');
-  const [adoptiveMotherId, setAdoptiveMotherId] = useState<string>('');
+  const [adoptiveFatherIds, setAdoptiveFatherIds] = useState<string[]>([]);
+  const [adoptiveMotherIds, setAdoptiveMotherIds] = useState<string[]>([]);
 
-  // 动态关系状态：兄弟姐妹和养父母显隐控制
+  // 配偶关系状态
+  const [spouseEntries, setSpouseEntries] = useState<{ id: string; type: SpouseRelationType }[]>([]);
+
+  // 子女关系状态
+  const [childEntries, setChildEntries] = useState<{ id: string; type: string }[]>([]);
+
+  // 动态关系状态：兄弟姐妹
   const [siblingIds, setSiblingIds] = useState<string[]>([]);
-  const [showAdoptiveFather, setShowAdoptiveFather] = useState<boolean>(false);
-  const [showAdoptiveMother, setShowAdoptiveMother] = useState<boolean>(false);
 
   // 日期录入 Tab 模式：'solar' (公历录入) | 'lunar' (农历录入)
   const [birthInputMode, setBirthInputMode] = useState<'solar' | 'lunar'>('solar');
@@ -222,27 +227,35 @@ export default function PersonEditPage() {
 
       setFatherId(initFatherId);
       setMotherId(initMotherId);
-      setAdoptiveFatherId(existingPerson.relations.adoptiveFather || '');
-      setAdoptiveMotherId(existingPerson.relations.adoptiveMother || '');
+      setAdoptiveFatherIds(getAdoptiveFathers(existingPerson.relations));
+      setAdoptiveMotherIds(getAdoptiveMothers(existingPerson.relations));
+
+      // 加载配偶关系
+      setSpouseEntries(
+        (existingPerson.relations.spouses || []).map(s => ({ id: s.id, type: s.type }))
+      );
+
+      // 加载子女关系
+      setChildEntries(
+        (existingPerson.relations.children || []).map(c => ({ id: c.id, type: c.type }))
+      );
 
       // 提取已有手足关系
       const f = existingPerson.relations.father;
       const m = existingPerson.relations.mother;
-      const af = existingPerson.relations.adoptiveFather;
-      const am = existingPerson.relations.adoptiveMother;
+      const afs = getAdoptiveFathers(existingPerson.relations);
+      const ams = getAdoptiveMothers(existingPerson.relations);
 
       const currentSiblings = Object.values(project?.persons || {}).filter((p: any) => {
         if (p.id === existingPerson.id) return false;
         const shareFather = f && p.relations.father === f;
         const shareMother = m && p.relations.mother === m;
-        const shareAdoptiveFather = af && p.relations.adoptiveFather === af;
-        const shareAdoptiveMother = am && p.relations.adoptiveMother === am;
+        const shareAdoptiveFather = afs.length > 0 && getAdoptiveFathers(p.relations).some(af => afs.includes(af));
+        const shareAdoptiveMother = ams.length > 0 && getAdoptiveMothers(p.relations).some(am => ams.includes(am));
         return shareFather || shareMother || shareAdoptiveFather || shareAdoptiveMother;
       }).map((p: any) => p.id);
 
       setSiblingIds(currentSiblings);
-      setShowAdoptiveFather(!!af);
-      setShowAdoptiveMother(!!am);
 
       // 回填公历生日数字
       if (existingPerson.birthDateSolar) {
@@ -459,8 +472,8 @@ export default function PersonEditPage() {
     // 计算最终要写入的父母 ID 链
     let finalFatherId = fatherId;
     let finalMotherId = motherId;
-    let finalAdoptiveFatherId = showAdoptiveFather ? adoptiveFatherId : '';
-    let finalAdoptiveMotherId = showAdoptiveMother ? adoptiveMotherId : '';
+    let finalAdoptiveFatherIds = [...adoptiveFatherIds].filter(Boolean);
+    let finalAdoptiveMotherIds = [...adoptiveMotherIds].filter(Boolean);
 
     const currentPersonId = id && !isNew ? id : uuidv4();
 
@@ -477,13 +490,17 @@ export default function PersonEditPage() {
         }
       }
       // 养父母做同等继承
-      if (!finalAdoptiveFatherId && !finalAdoptiveMotherId) {
+      if (finalAdoptiveFatherIds.length === 0 && finalAdoptiveMotherIds.length === 0) {
         for (const sibId of siblingIds) {
           const sib = project.persons[sibId];
-          if (sib && (sib.relations.adoptiveFather || sib.relations.adoptiveMother)) {
-            finalAdoptiveFatherId = sib.relations.adoptiveFather || '';
-            finalAdoptiveMotherId = sib.relations.adoptiveMother || '';
-            break;
+          if (sib) {
+            const sibAFs = getAdoptiveFathers(sib.relations);
+            const sibAMs = getAdoptiveMothers(sib.relations);
+            if (sibAFs.length > 0 || sibAMs.length > 0) {
+              finalAdoptiveFatherIds = sibAFs;
+              finalAdoptiveMotherIds = sibAMs;
+              break;
+            }
           }
         }
       }
@@ -555,10 +572,12 @@ export default function PersonEditPage() {
       relations: {
         father: finalFatherId || undefined,
         mother: finalMotherId || undefined,
-        adoptiveFather: finalAdoptiveFatherId || undefined,
-        adoptiveMother: finalAdoptiveMotherId || undefined,
-        spouses: existingPerson?.relations.spouses || [],
-        children: existingPerson?.relations.children || [],
+        adoptiveFather: finalAdoptiveFatherIds[0] || undefined,
+        adoptiveMother: finalAdoptiveMotherIds[0] || undefined,
+        adoptiveFathers: finalAdoptiveFatherIds.length > 0 ? finalAdoptiveFatherIds : undefined,
+        adoptiveMothers: finalAdoptiveMotherIds.length > 0 ? finalAdoptiveMotherIds : undefined,
+        spouses: spouseEntries.filter(s => s.id),
+        children: childEntries.filter(c => c.id).map(c => ({ id: c.id, type: c.type as any })),
       },
     };
 
@@ -576,8 +595,14 @@ export default function PersonEditPage() {
         if (sib) {
           sib.relations.father = finalFatherId || undefined;
           sib.relations.mother = finalMotherId || undefined;
-          if (finalAdoptiveFatherId) sib.relations.adoptiveFather = finalAdoptiveFatherId;
-          if (finalAdoptiveMotherId) sib.relations.adoptiveMother = finalAdoptiveMotherId;
+          if (finalAdoptiveFatherIds.length > 0) {
+            sib.relations.adoptiveFathers = finalAdoptiveFatherIds;
+            sib.relations.adoptiveFather = finalAdoptiveFatherIds[0];
+          }
+          if (finalAdoptiveMotherIds.length > 0) {
+            sib.relations.adoptiveMothers = finalAdoptiveMotherIds;
+            sib.relations.adoptiveMother = finalAdoptiveMotherIds[0];
+          }
           await updatePerson(sibId, { relations: sib.relations });
         }
       }
@@ -588,8 +613,13 @@ export default function PersonEditPage() {
         if (rem) {
           if (rem.relations.father === finalFatherId) rem.relations.father = undefined;
           if (rem.relations.mother === finalMotherId) rem.relations.mother = undefined;
-          if (rem.relations.adoptiveFather === finalAdoptiveFatherId) rem.relations.adoptiveFather = undefined;
-          if (rem.relations.adoptiveMother === finalAdoptiveMotherId) rem.relations.adoptiveMother = undefined;
+          // 清理养父母数组引用
+          if (rem.relations.adoptiveFathers) {
+            rem.relations.adoptiveFathers = rem.relations.adoptiveFathers.filter(id => !finalAdoptiveFatherIds.includes(id));
+          }
+          if (rem.relations.adoptiveMothers) {
+            rem.relations.adoptiveMothers = rem.relations.adoptiveMothers.filter(id => !finalAdoptiveMotherIds.includes(id));
+          }
           await updatePerson(remId, { relations: rem.relations });
         }
       }
@@ -614,6 +644,43 @@ export default function PersonEditPage() {
 
       if (finalFatherId) await updateParentChildren(finalFatherId);
       if (finalMotherId) await updateParentChildren(finalMotherId);
+
+      // 4. 同步配偶关系（双向）
+      const oldSpouseIds = new Set((existingPerson?.relations.spouses || []).map(s => s.id));
+      const newSpouseIds = new Set(spouseEntries.filter(s => s.id).map(s => s.id));
+
+      // 删除旧配偶
+      for (const oldSid of oldSpouseIds) {
+        if (!newSpouseIds.has(oldSid)) {
+          removeSpouse(currentPersonId, oldSid);
+        }
+      }
+      // 添加新配偶
+      for (const entry of spouseEntries) {
+        if (entry.id && !oldSpouseIds.has(entry.id)) {
+          addSpouse(currentPersonId, entry.id, entry.type);
+        }
+      }
+
+      // 5. 同步子女关系（双向）
+      for (const entry of childEntries) {
+        if (!entry.id) continue;
+        const child = project.persons[entry.id];
+        if (child) {
+          // 根据当前人员性别设置子女的父/母
+          if (gender === 'male') {
+            if (child.relations.father !== currentPersonId) {
+              child.relations.father = currentPersonId;
+              await updatePerson(entry.id, { relations: child.relations });
+            }
+          } else {
+            if (child.relations.mother !== currentPersonId) {
+              child.relations.mother = currentPersonId;
+              await updatePerson(entry.id, { relations: child.relations });
+            }
+          }
+        }
+      }
     }
 
     navigate(`/person/${currentPersonId}`);
@@ -658,8 +725,8 @@ export default function PersonEditPage() {
       relations: {
         father: fatherId || undefined,
         mother: motherId || undefined,
-        adoptiveFather: showAdoptiveFather ? adoptiveFatherId : undefined,
-        adoptiveMother: showAdoptiveMother ? adoptiveMotherId : undefined,
+        adoptiveFathers: adoptiveFatherIds.length > 0 ? adoptiveFatherIds : undefined,
+        adoptiveMothers: adoptiveMotherIds.length > 0 ? adoptiveMotherIds : undefined,
       }
     };
 
@@ -674,8 +741,8 @@ export default function PersonEditPage() {
             ...sibObj.relations,
             father: fatherId || undefined,
             mother: motherId || undefined,
-            adoptiveFather: showAdoptiveFather ? adoptiveFatherId : undefined,
-            adoptiveMother: showAdoptiveMother ? adoptiveMotherId : undefined,
+            adoptiveFathers: adoptiveFatherIds.length > 0 ? adoptiveFatherIds : undefined,
+            adoptiveMothers: adoptiveMotherIds.length > 0 ? adoptiveMotherIds : undefined,
           }
         };
       }
@@ -1299,66 +1366,194 @@ export default function PersonEditPage() {
           </div>
 
           {/* 养父母（动态展现） */}
-          {(showAdoptiveFather || showAdoptiveMother) && (
+          {(adoptiveFatherIds.length > 0 || adoptiveMotherIds.length > 0) && (
             <>
               <div className="relation-group-title">养父母</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                {showAdoptiveFather && (
-                  <div className="relation-item-dynamic">
-                    <span className="relation-label-dynamic">养父</span>
-                    <select className="relation-select-dynamic" value={adoptiveFatherId} onChange={(e) => setAdoptiveFatherId(e.target.value)}>
-                      <option value="">未设置</option>
-                      {availablePersons.filter((p) => p.gender === 'male').map((p) => (
-                        <option key={p.id} value={p.id}>{getFullName(p.surname, p.givenName)}</option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className="relation-delete-btn"
-                      title="移除养父关系"
-                      onClick={() => {
-                        setShowAdoptiveFather(false);
-                        setAdoptiveFatherId('');
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                )}
-                {showAdoptiveMother && (
-                  <div className="relation-item-dynamic">
-                    <span className="relation-label-dynamic">养母</span>
-                    <select className="relation-select-dynamic" value={adoptiveMotherId} onChange={(e) => setAdoptiveMotherId(e.target.value)}>
-                      <option value="">未设置</option>
-                      {availablePersons.filter((p) => p.gender === 'female').map((p) => (
-                        <option key={p.id} value={p.id}>{getFullName(p.surname, p.givenName)}</option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className="relation-delete-btn"
-                      title="移除养母关系"
-                      onClick={() => {
-                        setShowAdoptiveMother(false);
-                        setAdoptiveMotherId('');
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {adoptiveFatherIds.map((afId, index) => (
+                    <div key={`af-${index}`} className="relation-item-dynamic">
+                      <span className="relation-label-dynamic">养父</span>
+                      <select
+                        className="relation-select-dynamic"
+                        value={afId}
+                        onChange={(e) => {
+                          const newIds = [...adoptiveFatherIds];
+                          newIds[index] = e.target.value;
+                          setAdoptiveFatherIds(newIds);
+                        }}
+                      >
+                        <option value="">未设置</option>
+                        {availablePersons.filter((p) => p.gender === 'male').map((p) => (
+                          <option key={p.id} value={p.id}>{getFullName(p.surname, p.givenName)}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="relation-delete-btn"
+                        title="移除养父关系"
+                        onClick={() => {
+                          setAdoptiveFatherIds(adoptiveFatherIds.filter((_, i) => i !== index));
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {adoptiveMotherIds.map((amId, index) => (
+                    <div key={`am-${index}`} className="relation-item-dynamic">
+                      <span className="relation-label-dynamic">养母</span>
+                      <select
+                        className="relation-select-dynamic"
+                        value={amId}
+                        onChange={(e) => {
+                          const newIds = [...adoptiveMotherIds];
+                          newIds[index] = e.target.value;
+                          setAdoptiveMotherIds(newIds);
+                        }}
+                      >
+                        <option value="">未设置</option>
+                        {availablePersons.filter((p) => p.gender === 'female').map((p) => (
+                          <option key={p.id} value={p.id}>{getFullName(p.surname, p.givenName)}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="relation-delete-btn"
+                        title="移除养母关系"
+                        onClick={() => {
+                          setAdoptiveMotherIds(adoptiveMotherIds.filter((_, i) => i !== index));
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             </>
+          )}
+
+          {/* 配偶 */}
+          <div className="relation-group-title">配偶</div>
+          {spouseEntries.length === 0 ? (
+            <div style={{ fontSize: '13px', color: 'var(--color-text-tertiary)', paddingLeft: '8px', fontStyle: 'italic', marginBottom: '12px' }}>
+              暂未关联配偶，点击下方按钮可动态添加。
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+              {spouseEntries.map((entry, index) => (
+                <div key={`spouse-${index}`} className="relation-item-dynamic" style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                  <span className="relation-label-dynamic" style={{ minWidth: '40px' }}>配偶</span>
+                  <select
+                    className="relation-select-dynamic"
+                    style={{ flex: 2 }}
+                    value={entry.id}
+                    onChange={(e) => {
+                      const newEntries = [...spouseEntries];
+                      newEntries[index] = { ...newEntries[index], id: e.target.value };
+                      setSpouseEntries(newEntries);
+                    }}
+                  >
+                    <option value="">选择人员...</option>
+                    {availablePersons.map((p) => (
+                      <option key={p.id} value={p.id}>{getFullName(p.surname, p.givenName)}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="relation-select-dynamic"
+                    style={{ flex: 1, minWidth: '80px' }}
+                    value={entry.type}
+                    onChange={(e) => {
+                      const newEntries = [...spouseEntries];
+                      newEntries[index] = { ...newEntries[index], type: e.target.value as SpouseRelationType };
+                      setSpouseEntries(newEntries);
+                    }}
+                  >
+                    <option value="married">已婚</option>
+                    <option value="divorced">离异</option>
+                    <option value="deceased">已故</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="relation-delete-btn"
+                    title="移除配偶关系"
+                    onClick={() => {
+                      setSpouseEntries(spouseEntries.filter((_, i) => i !== index));
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 子女 */}
+          <div className="relation-group-title">子女</div>
+          {childEntries.length === 0 ? (
+            <div style={{ fontSize: '13px', color: 'var(--color-text-tertiary)', paddingLeft: '8px', fontStyle: 'italic', marginBottom: '12px' }}>
+              暂未关联子女，点击下方按钮可动态添加。
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+              {childEntries.map((entry, index) => (
+                <div key={`child-${index}`} className="relation-item-dynamic" style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                  <span className="relation-label-dynamic" style={{ minWidth: '40px' }}>子女</span>
+                  <select
+                    className="relation-select-dynamic"
+                    style={{ flex: 2 }}
+                    value={entry.id}
+                    onChange={(e) => {
+                      const newEntries = [...childEntries];
+                      newEntries[index] = { ...newEntries[index], id: e.target.value };
+                      setChildEntries(newEntries);
+                    }}
+                  >
+                    <option value="">选择人员...</option>
+                    {availablePersons.map((p) => (
+                      <option key={p.id} value={p.id}>{getFullName(p.surname, p.givenName)}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="relation-select-dynamic"
+                    style={{ flex: 1, minWidth: '80px' }}
+                    value={entry.type}
+                    onChange={(e) => {
+                      const newEntries = [...childEntries];
+                      newEntries[index] = { ...newEntries[index], type: e.target.value };
+                      setChildEntries(newEntries);
+                    }}
+                  >
+                    <option value="biological">亲生</option>
+                    <option value="adopted">养子/女</option>
+                    <option value="step">继子/女</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="relation-delete-btn"
+                    title="移除子女关系"
+                    onClick={() => {
+                      setChildEntries(childEntries.filter((_, i) => i !== index));
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
           )}
 
           {/* 兄弟姐妹列表 */}
           <div className="relation-group-title">兄弟姐妹</div>
           {siblingIds.length === 0 ? (
-            <div style={{ fontSize: '13px', color: 'var(--color-text-tertiary)', paddingLeft: '8px', fontStyle: 'italic' }}>
+            <div style={{ fontSize: '13px', color: 'var(--color-text-tertiary)', paddingLeft: '8px', fontStyle: 'italic', marginBottom: '12px' }}>
               暂未关联兄弟姐妹，点击下方按钮可动态添加。
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
               {siblingIds.map((sibId, index) => {
                 const tempPersons = getTempPersons();
                 const currentPersonId = id && id !== 'new' ? id : 'temp-new-id';
@@ -1413,30 +1608,46 @@ export default function PersonEditPage() {
             </button>
             {showRelationMenu && (
               <div className="relation-menu-dropdown">
-                {!showAdoptiveFather && (
-                  <button
-                    type="button"
-                    className="relation-menu-item"
-                    onClick={() => {
-                      setShowAdoptiveFather(true);
-                      setShowRelationMenu(false);
-                    }}
-                  >
-                    增加 养父
-                  </button>
-                )}
-                {!showAdoptiveMother && (
-                  <button
-                    type="button"
-                    className="relation-menu-item"
-                    onClick={() => {
-                      setShowAdoptiveMother(true);
-                      setShowRelationMenu(false);
-                    }}
-                  >
-                    增加 养母
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className="relation-menu-item"
+                  onClick={() => {
+                    setAdoptiveFatherIds([...adoptiveFatherIds, '']);
+                    setShowRelationMenu(false);
+                  }}
+                >
+                  增加 养父
+                </button>
+                <button
+                  type="button"
+                  className="relation-menu-item"
+                  onClick={() => {
+                    setAdoptiveMotherIds([...adoptiveMotherIds, '']);
+                    setShowRelationMenu(false);
+                  }}
+                >
+                  增加 养母
+                </button>
+                <button
+                  type="button"
+                  className="relation-menu-item"
+                  onClick={() => {
+                    setSpouseEntries([...spouseEntries, { id: '', type: 'married' }]);
+                    setShowRelationMenu(false);
+                  }}
+                >
+                  增加 配偶
+                </button>
+                <button
+                  type="button"
+                  className="relation-menu-item"
+                  onClick={() => {
+                    setChildEntries([...childEntries, { id: '', type: 'biological' }]);
+                    setShowRelationMenu(false);
+                  }}
+                >
+                  增加 子女
+                </button>
                 <button
                   type="button"
                   className="relation-menu-item"

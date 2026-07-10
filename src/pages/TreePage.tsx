@@ -24,7 +24,7 @@ import '@xyflow/react/dist/style.css';
 import { useFamilyStore } from '../store/familyStore';
 import { getFullName, getLifeSpan, formatAge, getRelationshipText } from '../utils';
 import { convertLocalSrc } from '../utils/tauri';
-import type { Person } from '../types';
+import { type Person, getAdoptiveFathers, getAdoptiveMothers } from '../types';
 import './TreePage.css';
 
 // ==================== 自定义节点组件 ====================
@@ -351,6 +351,10 @@ function TreePageContent() {
             style: nextStyle,
             markerStart: undefined,
             markerEnd: undefined,
+            label: isSpouse ? '配偶' : undefined,
+            labelStyle: isSpouse ? { fontSize: 10, fill: '#71717a', transform: 'translateY(-6px)' } : undefined,
+            labelBgStyle: isSpouse ? { fill: 'transparent' } : undefined,
+            labelBgPadding: undefined,
           };
         });
         // 恢复默认的层级排序：配偶线在最顶层
@@ -370,9 +374,9 @@ function TreePageContent() {
     // 父母：生父、生母、养父、养母
     const parents = [
       person.relations.father,
-      person.relations.adoptiveFather,
+      ...getAdoptiveFathers(person.relations),
       person.relations.mother,
-      person.relations.adoptiveMother,
+      ...getAdoptiveMothers(person.relations),
     ].filter(Boolean) as string[];
 
     // 子女
@@ -391,6 +395,17 @@ function TreePageContent() {
 
         if (isParentEdge) {
           // 父母：流向父母（逆流），荧光绿，带指向父母的 markerStart 箭头
+          let labelText = '父母';
+          if (edge.source === person.relations.father) {
+            labelText = '生父';
+          } else if (edge.source === person.relations.mother) {
+            labelText = '生母';
+          } else if (edge.id.startsWith('adopt-f-')) {
+            labelText = '养父';
+          } else if (edge.id.startsWith('adopt-m-')) {
+            labelText = '养母';
+          }
+
           return {
             ...edge,
             animated: false,
@@ -408,6 +423,10 @@ function TreePageContent() {
               height: 12,
             },
             markerEnd: undefined,
+            label: labelText,
+            labelStyle: { fontSize: 10, fill: 'oklch(50% 0.15 140)', fontWeight: 600, transform: 'translateY(-6px)' },
+            labelBgStyle: { fill: 'transparent' },
+            labelBgPadding: undefined,
           };
         } else if (isChildEdge) {
           // 子女：流向子女（顺流），荧光蓝，带指向子女的 markerEnd 箭头
@@ -428,6 +447,10 @@ function TreePageContent() {
               height: 12,
             },
             markerStart: undefined,
+            label: undefined,
+            labelStyle: undefined,
+            labelBgStyle: undefined,
+            labelBgPadding: undefined,
           };
         } else if (isCurrentSpouseEdge) {
           // 配偶：流向配偶，荧光粉，带流向配偶的箭头
@@ -455,6 +478,10 @@ function TreePageContent() {
               width: 12,
               height: 12,
             } : undefined,
+            label: '配偶',
+            labelStyle: { fontSize: 10, fill: spouseColor, fontWeight: 600, transform: 'translateY(-6px)' },
+            labelBgStyle: { fill: 'transparent' },
+            labelBgPadding: undefined,
           };
         } else {
           // 其他无关连线，不透明度调至 10%
@@ -471,6 +498,10 @@ function TreePageContent() {
             style: nextStyle,
             markerStart: undefined,
             markerEnd: undefined,
+            label: isSpouse ? '配偶' : undefined,
+            labelStyle: isSpouse ? { fontSize: 10, fill: '#71717a', transform: 'translateY(-6px)' } : undefined,
+            labelBgStyle: isSpouse ? { fill: 'transparent' } : undefined,
+            labelBgPadding: undefined,
           };
         }
       });
@@ -657,14 +688,15 @@ function TreePageContent() {
         }
       }
 
-      // 养父母
-      if (person.relations.adoptiveFather) {
-        const key = `adopt-f-${person.relations.adoptiveFather}->${person.id}`;
+      // 养父母（支持数组）
+      const adoptFathers = getAdoptiveFathers(person.relations);
+      adoptFathers.forEach(afId => {
+        const key = `adopt-f-${afId}->${person.id}`;
         if (!edgeSet.has(key)) {
           edgeSet.add(key);
           graphEdges.push({
             id: key,
-            source: person.relations.adoptiveFather,
+            source: afId,
             target: person.id,
             sourceHandle: 'bottom',
             targetHandle: 'top',
@@ -672,14 +704,15 @@ function TreePageContent() {
             style: { stroke: '#b1b1b7', strokeWidth: 1.5, strokeDasharray: '6,4' },
           });
         }
-      }
-      if (person.relations.adoptiveMother) {
-        const key = `adopt-m-${person.relations.adoptiveMother}->${person.id}`;
+      });
+      const adoptMothers = getAdoptiveMothers(person.relations);
+      adoptMothers.forEach(amId => {
+        const key = `adopt-m-${amId}->${person.id}`;
         if (!edgeSet.has(key)) {
           edgeSet.add(key);
           graphEdges.push({
             id: key,
-            source: person.relations.adoptiveMother,
+            source: amId,
             target: person.id,
             sourceHandle: 'bottom',
             targetHandle: 'top',
@@ -687,7 +720,7 @@ function TreePageContent() {
             style: { stroke: '#b1b1b7', strokeWidth: 1.5, strokeDasharray: '6,4' },
           });
         }
-      }
+      });
 
       // 配偶关系（水平虚线，男在左 sourceHandle='right'，女在右 targetHandle='left'）
       person.relations.spouses.forEach((spouse) => {
@@ -726,7 +759,8 @@ function TreePageContent() {
               strokeDasharray: '4,4',
             },
             label: '配偶',
-            labelStyle: { fontSize: 10, fill: '#71717a' },
+            labelStyle: { fontSize: 10, fill: '#71717a', transform: 'translateY(-6px)' },
+            labelBgStyle: { fill: 'transparent' },
           });
         }
       });
@@ -749,9 +783,9 @@ function TreePageContent() {
         const currLevel = generationLevels[currId];
         const person = project?.persons[currId];
         if (person) {
-          // 生父母 / 养父母 (gen - 1)
-          const father = person.relations.father || person.relations.adoptiveFather;
-          const mother = person.relations.mother || person.relations.adoptiveMother;
+          // 生父母 (gen - 1)
+          const father = person.relations.father;
+          const mother = person.relations.mother;
           if (father && !visited.has(father)) {
             generationLevels[father] = currLevel - 1;
             visited.add(father);
@@ -762,6 +796,23 @@ function TreePageContent() {
             visited.add(mother);
             queue.push(mother);
           }
+          // 养父母 (gen - 1)，支持数组
+          const aFathers = getAdoptiveFathers(person.relations);
+          aFathers.forEach(afId => {
+            if (!visited.has(afId)) {
+              generationLevels[afId] = currLevel - 1;
+              visited.add(afId);
+              queue.push(afId);
+            }
+          });
+          const aMothers = getAdoptiveMothers(person.relations);
+          aMothers.forEach(amId => {
+            if (!visited.has(amId)) {
+              generationLevels[amId] = currLevel - 1;
+              visited.add(amId);
+              queue.push(amId);
+            }
+          });
           // 配偶 (gen 相同)
           if (person.relations.spouses) {
             person.relations.spouses.forEach(s => {
@@ -792,14 +843,14 @@ function TreePageContent() {
       const person = (node.data as any)?.person;
       if (!person) return false;
 
-      const hasParents = !!(person.relations.father || person.relations.mother || person.relations.adoptiveFather || person.relations.adoptiveMother);
+      const hasParents = !!(person.relations.father || person.relations.mother || getAdoptiveFathers(person.relations).length > 0 || getAdoptiveMothers(person.relations).length > 0);
       if (hasParents) return true;
 
       const spouses = person.relations.spouses || [];
       if (spouses.length > 0) {
         const spouseObj = project?.persons[spouses[0].id];
         if (spouseObj) {
-          const spouseHasParents = !!(spouseObj.relations.father || spouseObj.relations.mother || spouseObj.relations.adoptiveFather || spouseObj.relations.adoptiveMother);
+          const spouseHasParents = !!(spouseObj.relations.father || spouseObj.relations.mother || getAdoptiveFathers(spouseObj.relations).length > 0 || getAdoptiveMothers(spouseObj.relations).length > 0);
           if (spouseHasParents) return false;
         }
       }
@@ -969,6 +1020,7 @@ function TreePageContent() {
     };
 
     // 5. 寻找树的最高辈分祖先根节点并执行布局计算
+    const processedNodeIds = new Set<string>(); // 记录被布局算法处理过的节点
     const minHeight = Math.min(...layouted.map(n => generationLevels[n.id] ?? 0));
     const roots = layouted.filter(n => (generationLevels[n.id] ?? 0) === minHeight);
     const primaryRoots = roots.filter(n => isPrimaryNode(n.id));
@@ -982,6 +1034,7 @@ function TreePageContent() {
         const node = nodeMap.get(id);
         if (node) {
           node.position.x = relX + currentRootOffset;
+          processedNodeIds.add(id);
         }
       });
 
@@ -1003,6 +1056,32 @@ function TreePageContent() {
         currentRootOffset += maxShift > 0 ? maxShift : 500;
       }
     });
+
+    // ====== Bug 1 修复：将未被布局算法处理的孤立节点放置在家谱树右下方空白区域 ======
+    const orphanNodes = layouted.filter(n => !processedNodeIds.has(n.id));
+    if (orphanNodes.length > 0) {
+      // 计算已布局节点的边界范围
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      layouted.forEach(n => {
+        if (processedNodeIds.has(n.id)) {
+          if (n.position.x > maxX) maxX = n.position.x;
+          if (n.position.y > maxY) maxY = n.position.y;
+        }
+      });
+      // 如果没有已布局的节点，使用默认起点
+      if (maxX === -Infinity) maxX = 0;
+      if (maxY === -Infinity) maxY = 0;
+
+      // 将孤立节点放在右侧空白区域，纵向排列，互不重叠
+      const orphanStartX = maxX + 400;
+      const orphanStartY = 0;
+      const orphanGapY = 180;
+      orphanNodes.forEach((node, index) => {
+        node.position.x = orphanStartX;
+        node.position.y = orphanStartY + index * orphanGapY;
+      });
+    }
 
     // 根据配偶双方最终对齐完毕后的物理 X 轴坐标，动态分配连接点 Handles，确保配偶连线始终水平且不产生穿透
     graphEdges.forEach((edge) => {
@@ -1035,15 +1114,38 @@ function TreePageContent() {
       });
     }
 
-    // 仅当视图模式为"自定义布局"时应用已保存的自定义位置
-    const currentCustomLayout = useFamilyStore.getState().project?.customLayout;
-    if (!useDefaultLayoutRef.current && currentCustomLayout) {
-      layouted.forEach((n) => {
-        const pos = currentCustomLayout[n.id];
-        if (pos) {
-          n.position = { x: pos.x, y: pos.y };
-        }
+    // ====== Bug 2 & 3 修复：保持已有节点位置，仅对新增节点使用算法布局 ======
+    // 当不是用户明确点击"默认布局"按钮时，尝试保持已有节点的当前位置
+    if (!useDefaultLayoutRef.current) {
+      // 优先从 ReactFlow 当前实时节点读取位置
+      const currentNodes = getNodes();
+      const currentPosMap = new Map<string, { x: number; y: number }>();
+      currentNodes.forEach(n => {
+        currentPosMap.set(n.id, { x: n.position.x, y: n.position.y });
       });
+
+      // 如果当前有实时节点（非首次构建），用实时位置覆盖已有节点
+      if (currentNodes.length > 0) {
+        layouted.forEach((n) => {
+          const existingPos = currentPosMap.get(n.id);
+          if (existingPos) {
+            // 已有节点保持当前位置不变
+            n.position = { x: existingPos.x, y: existingPos.y };
+          }
+          // 新增节点使用算法计算的位置（已在上方计算好）
+        });
+      } else {
+        // 首次构建，尝试从 customLayout 恢复
+        const currentCustomLayout = useFamilyStore.getState().project?.customLayout;
+        if (currentCustomLayout) {
+          layouted.forEach((n) => {
+            const pos = currentCustomLayout[n.id];
+            if (pos) {
+              n.position = { x: pos.x, y: pos.y };
+            }
+          });
+        }
+      }
     }
 
     setNodes(layouted);
@@ -1054,7 +1156,7 @@ function TreePageContent() {
       return scoreA - scoreB;
     });
     setEdges(defaultSortedEdges);
-  }, [project?.persons, project?.meta.defaultPerspectiveId, setNodes, setEdges]);
+  }, [project?.persons, project?.meta.defaultPerspectiveId, setNodes, setEdges, getNodes]);
 
   useEffect(() => {
     buildGraph();

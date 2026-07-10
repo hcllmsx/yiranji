@@ -71,8 +71,10 @@ export interface ChildRelation {
 export interface Relations {
   father?: string;
   mother?: string;
-  adoptiveFather?: string;
-  adoptiveMother?: string;
+  adoptiveFather?: string;       // 单值（旧版兼容）
+  adoptiveMother?: string;       // 单值（旧版兼容）
+  adoptiveFathers?: string[];    // 多养父（新版，优先使用）
+  adoptiveMothers?: string[];    // 多养母（新版，优先使用）
   stepFather?: string;
   stepMother?: string;
   spouses: SpouseRelation[];
@@ -180,4 +182,20 @@ export function createDefaultMeta(surname: string): Omit<FamilyMeta, 'createdAt'
     surname,
     hasPassword: false,
   };
+}
+
+// ==================== 养父母兼容工具 ====================
+
+/** 获取所有养父ID（兼容旧版单值和新版数组） */
+export function getAdoptiveFathers(relations: Relations): string[] {
+  if (relations.adoptiveFathers && relations.adoptiveFathers.length > 0) return relations.adoptiveFathers;
+  if (relations.adoptiveFather) return [relations.adoptiveFather];
+  return [];
+}
+
+/** 获取所有养母ID（兼容旧版单值和新版数组） */
+export function getAdoptiveMothers(relations: Relations): string[] {
+  if (relations.adoptiveMothers && relations.adoptiveMothers.length > 0) return relations.adoptiveMothers;
+  if (relations.adoptiveMother) return [relations.adoptiveMother];
+  return [];
 }

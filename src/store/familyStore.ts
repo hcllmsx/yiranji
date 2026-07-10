@@ -54,6 +54,23 @@ function loadProject(projectId: string): FamilyProject | null {
   }
 }
 
+/** 自动升级旧版养父母数据结构为新版数组格式 */
+function migrateProjectData(project: FamilyProject): FamilyProject {
+  if (!project || !project.persons) return project;
+  Object.values(project.persons).forEach((p) => {
+    if (!p.relations) {
+      p.relations = { spouses: [], children: [] };
+    }
+    if (p.relations.adoptiveFather && (!p.relations.adoptiveFathers || p.relations.adoptiveFathers.length === 0)) {
+      p.relations.adoptiveFathers = [p.relations.adoptiveFather];
+    }
+    if (p.relations.adoptiveMother && (!p.relations.adoptiveMothers || p.relations.adoptiveMothers.length === 0)) {
+      p.relations.adoptiveMothers = [p.relations.adoptiveMother];
+    }
+  });
+  return project;
+}
+
 function getRecentProjects(): RecentProject[] {
   const raw = localStorage.getItem(RECENT_KEY);
   if (!raw) return [];
@@ -211,8 +228,9 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
 
   openProject: (projectId: string) => {
     // 该方法一般用于 Web 版 localStorage 的历史文件
-    const project = loadProject(projectId);
-    if (!project) return false;
+    const rawProject = loadProject(projectId);
+    if (!rawProject) return false;
+    const project = migrateProjectData(rawProject);
 
     // 更新最近项目
     const recent = getRecentProjects();
@@ -259,7 +277,8 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
 
       // 2. 直接以高速明文读取加载工作区下的 project.json 属性
       const json = await loadProjectJson(workspacePath);
-      const project = JSON.parse(json) as FamilyProject;
+      const rawProject = JSON.parse(json) as FamilyProject;
+      const project = migrateProjectData(rawProject);
       // 从外部文件/文件夹打开时，总生成新的 projectId，避免与源项目或其他历史记录冲突
       const projectId = uuidv4();
 
@@ -333,7 +352,8 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     }
   },
 
-  importProjectFromJSON: async (project: FamilyProject) => {
+  importProjectFromJSON: async (rawProject: FamilyProject) => {
+    const project = migrateProjectData(rawProject);
     // 导入 JSON 时总生成新的 projectId，避免与已有项目冲突
     const projectId = uuidv4();
     const now = new Date().toISOString();
@@ -604,6 +624,8 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
       if (r.mother === id) r.mother = undefined;
       if (r.adoptiveFather === id) r.adoptiveFather = undefined;
       if (r.adoptiveMother === id) r.adoptiveMother = undefined;
+      if (r.adoptiveFathers) r.adoptiveFathers = r.adoptiveFathers.filter(fid => fid !== id);
+      if (r.adoptiveMothers) r.adoptiveMothers = r.adoptiveMothers.filter(mid => mid !== id);
       if (r.stepFather === id) r.stepFather = undefined;
       if (r.stepMother === id) r.stepMother = undefined;
       r.spouses = r.spouses.filter((s) => s.id !== id);
@@ -674,6 +696,27 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     const validKeys = ['father', 'mother', 'adoptiveFather', 'adoptiveMother', 'stepFather', 'stepMother'];
     if (validKeys.includes(relationType)) {
       (relations as any)[relationType] = targetId ?? undefined;
+    }
+
+    // 支持数组形式的养父母
+    if (relationType === 'adoptiveFathers' && targetId) {
+      relations.adoptiveFathers = relations.adoptiveFathers || [];
+      if (!relations.adoptiveFathers.includes(targetId)) {
+        relations.adoptiveFathers = [...relations.adoptiveFathers, targetId];
+      }
+      // 同步设置旧版单值字段（兼容）
+      if (!relations.adoptiveFather) {
+        relations.adoptiveFather = targetId;
+      }
+    }
+    if (relationType === 'adoptiveMothers' && targetId) {
+      relations.adoptiveMothers = relations.adoptiveMothers || [];
+      if (!relations.adoptiveMothers.includes(targetId)) {
+        relations.adoptiveMothers = [...relations.adoptiveMothers, targetId];
+      }
+      if (!relations.adoptiveMother) {
+        relations.adoptiveMother = targetId;
+      }
     }
 
     person.relations = relations;
