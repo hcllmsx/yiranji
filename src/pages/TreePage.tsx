@@ -1431,34 +1431,45 @@ function TreePageContent() {
             style={{ position: 'fixed', inset: 0, zIndex: 999 }}
             onClick={() => setContextMenu(null)}
           />
-          <div
-            className="context-menu"
-            style={{ top: contextMenu.y, left: contextMenu.x }}
-          >
-            <button className="context-menu-item" onClick={() => navigate(`/person/${contextMenu.personId}`)}>
-              👤 查看详情
-            </button>
-            <button className="context-menu-item" onClick={() => navigate(`/person/${contextMenu.personId}/edit`)}>
-              ✏️ 编辑信息
-            </button>
-            <div className="context-menu-divider" />
-            <button className="context-menu-item" onClick={() => handleAddRelation('father')}>
-              ➕ 添加父亲
-            </button>
-            <button className="context-menu-item" onClick={() => handleAddRelation('mother')}>
-              ➕ 添加母亲
-            </button>
-            <button className="context-menu-item" onClick={() => handleAddRelation('spouse')}>
-              ➕ 添加配偶
-            </button>
-            <button className="context-menu-item" onClick={() => handleAddRelation('child')}>
-              ➕ 添加子女
-            </button>
-            <div className="context-menu-divider" />
-            <button className="context-menu-item danger-text" onClick={handleDeletePerson}>
-              🗑️ 删除人员
-            </button>
-          </div>
+          {(() => {
+            const targetPerson = persons.find((p) => p.id === contextMenu.personId);
+            const hasFather = !!targetPerson?.relations.father;
+            const hasMother = !!targetPerson?.relations.mother;
+            return (
+              <div
+                className="context-menu"
+                style={{ top: contextMenu.y, left: contextMenu.x }}
+              >
+                <button className="context-menu-item" onClick={() => navigate(`/person/${contextMenu.personId}`)}>
+                  👤 查看详情
+                </button>
+                <button className="context-menu-item" onClick={() => navigate(`/person/${contextMenu.personId}/edit`)}>
+                  ✏️ 编辑信息
+                </button>
+                <div className="context-menu-divider" />
+                {!hasFather && (
+                  <button className="context-menu-item" onClick={() => handleAddRelation('father')}>
+                    ➕ 添加父亲
+                  </button>
+                )}
+                {!hasMother && (
+                  <button className="context-menu-item" onClick={() => handleAddRelation('mother')}>
+                    ➕ 添加母亲
+                  </button>
+                )}
+                <button className="context-menu-item" onClick={() => handleAddRelation('spouse')}>
+                  ➕ 添加配偶
+                </button>
+                <button className="context-menu-item" onClick={() => handleAddRelation('child')}>
+                  ➕ 添加子女
+                </button>
+                <div className="context-menu-divider" />
+                <button className="context-menu-item danger-text" onClick={handleDeletePerson}>
+                  🗑️ 删除人员
+                </button>
+              </div>
+            );
+          })()}
         </>
       )}
 

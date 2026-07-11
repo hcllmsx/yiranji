@@ -72,11 +72,22 @@ npm run dev
 
 ## 版本号管理
 
-版本号统一在根目录的 [`VERSION`](./VERSION) 文件中维护。运行 `npm run tauri dev` 或 `npm run tauri build` 时会自动同步到：
+版本号统一在根目录的 [`VERSION`](./VERSION) 文件中维护。
 
-- `package.json` 的 `version` 字段
-- `src-tauri/Cargo.toml` 的 `version` 字段
-- `src-tauri/tauri.conf.json` 的 `version` 字段
+当你在本地修改了 `VERSION` 文件后，在推送到 GitHub 之前，必须在本地运行以下命令，将最新版本号同步至所有相关配置文件中：
+
+```bash
+npm run sync-version
+```
+
+该同步脚本会自动改写以下文件的版本号：
+
+- `package.json` 和 `package-lock.json`
+- `src-tauri/tauri.conf.json`
+- `src-tauri/Cargo.toml` 和 `src-tauri/Cargo.lock`
+- `src-tauri/nsis-hooks.nsh` 中的安装引导标题
+
+*注：在本地运行 `npm run tauri build` 时也会自动运行此同步。*
 
 > 版本号必须符合 semver 格式（如 `26.7.2`，不要写成 `2026.07.02`），前面不要使用0，最大不能超过255。
 
