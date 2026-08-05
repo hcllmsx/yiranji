@@ -1,11 +1,11 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "以苒纪",
-  "version": "26.7.11",
+  "version": "26.8.5",
   "identifier": "com.yiranji.desktop",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:5173",
+    "devUrl": "http://localhost:5273",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build"
   },

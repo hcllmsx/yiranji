@@ -14,7 +14,7 @@ import {
 import { Lunar } from 'lunar-javascript';
 import { isTauri, convertLocalSrc, saveMediaFile, deleteMediaFile } from '../utils/tauri';
 import AvatarCropModal from '../components/AvatarCropModal';
-import type { Person, Gender, LunarDate, SpouseRelationType } from '../types';
+import type { Person, Gender, LunarDate, SpouseRelationType, Relations } from '../types';
 import { getAdoptiveFathers, getAdoptiveMothers } from '../types';
 import chinaRegions from '../data/china-regions.json';
 import './PersonEditPage.css';
@@ -609,9 +609,21 @@ export default function PersonEditPage() {
 
     const currentPersonId = id && !isNew ? id : uuidv4();
 
+    // 记录保存前是否已有生父生母/养父母，用于区分"用户主动清除"与"原本就没设"两种场景
+    const origRelations: Relations = existingPerson?.relations ?? { spouses: [], children: [] };
+    const origHadParents = !!(origRelations.father || origRelations.mother);
+    const origHadAdoptiveParents =
+      getAdoptiveFathers(origRelations).length > 0 ||
+      getAdoptiveMothers(origRelations).length > 0;
+    // 记录保存前的生父生母 ID，用于父母变更/取消后清理旧父母 children 列表
+    const origFatherId = existingPerson?.relations.father;
+    const origMotherId = existingPerson?.relations.mother;
+
     if (project) {
       // 若生父母未设置，但选中手足已设置，则自动继承其父母
-      if (!finalFatherId && !finalMotherId) {
+      // 仅当原来就没有生父生母时才继承（新建或原本未设）；
+      // 若原来有生父生母而用户主动清空，则尊重用户意图，不继承
+      if (!finalFatherId && !finalMotherId && !origHadParents) {
         for (const sibId of siblingIds) {
           const sib = project.persons[sibId];
           if (sib && (sib.relations.father || sib.relations.mother)) {
@@ -621,8 +633,8 @@ export default function PersonEditPage() {
           }
         }
       }
-      // 养父母做同等继承
-      if (finalAdoptiveFatherIds.length === 0 && finalAdoptiveMotherIds.length === 0) {
+      // 养父母做同等继承（同样仅在原来就没有养父母时才继承）
+      if (finalAdoptiveFatherIds.length === 0 && finalAdoptiveMotherIds.length === 0 && !origHadAdoptiveParents) {
         for (const sibId of siblingIds) {
           const sib = project.persons[sibId];
           if (sib) {
@@ -638,7 +650,8 @@ export default function PersonEditPage() {
       }
 
       // 如果依然无父母，但在表单中强行拉了手足关联，自动在后台生成一对隐藏占位父母节点
-      if (!finalFatherId && !finalMotherId && siblingIds.length > 0) {
+      // 同样仅在原来就没有生父生母时才生成，避免用户主动清除后被虚拟父母回填
+      if (!finalFatherId && !finalMotherId && siblingIds.length > 0 && !origHadParents) {
         const genFatherId = uuidv4();
         const genMotherId = uuidv4();
         const now = new Date().toISOString();
@@ -724,11 +737,16 @@ export default function PersonEditPage() {
     // 后续手足及父母子嗣属性双向同步
     if (project) {
       // 1. 同步将兄弟姐妹的父母设为跟本人一致
+      // 仅在本人设置了父母时才同步给手足；本人取消父母时不影响手足已有的父母关系
       for (const sibId of siblingIds) {
         const sib = project.persons[sibId];
         if (sib) {
-          sib.relations.father = finalFatherId || undefined;
-          sib.relations.mother = finalMotherId || undefined;
+          if (finalFatherId) {
+            sib.relations.father = finalFatherId;
+          }
+          if (finalMotherId) {
+            sib.relations.mother = finalMotherId;
+          }
           if (finalAdoptiveFatherIds.length > 0) {
             sib.relations.adoptiveFathers = finalAdoptiveFatherIds;
             sib.relations.adoptiveFather = finalAdoptiveFatherIds[0];
@@ -775,6 +793,25 @@ export default function PersonEditPage() {
           await updatePerson(parentId, { relations: parent.relations });
         }
       };
+
+      // 3a. 若生父/生母变更或取消，先从旧父母的 children 列表中移除当前人员
+      const removeFromParentChildren = async (parentId: string) => {
+        const parent = project.persons[parentId];
+        if (parent) {
+          const origChildren = parent.relations.children || [];
+          const updatedChildren = origChildren.filter(c => c.id !== currentPersonId);
+          if (updatedChildren.length !== origChildren.length) {
+            parent.relations.children = updatedChildren;
+            await updatePerson(parentId, { relations: parent.relations });
+          }
+        }
+      };
+      if (origFatherId && origFatherId !== finalFatherId) {
+        await removeFromParentChildren(origFatherId);
+      }
+      if (origMotherId && origMotherId !== finalMotherId) {
+        await removeFromParentChildren(origMotherId);
+      }
 
       if (finalFatherId) await updateParentChildren(finalFatherId);
       if (finalMotherId) await updateParentChildren(finalMotherId);

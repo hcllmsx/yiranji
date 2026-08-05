@@ -1073,13 +1073,61 @@ function TreePageContent() {
       if (maxX === -Infinity) maxX = 0;
       if (maxY === -Infinity) maxY = 0;
 
-      // 将孤立节点放在右侧空白区域，纵向排列，互不重叠
+      // 将孤立节点放在右侧空白区域；互为配偶的节点成对水平排列（男左女右），其余纵向排列
       const orphanStartX = maxX + 400;
       const orphanStartY = 0;
       const orphanGapY = 180;
-      orphanNodes.forEach((node, index) => {
+      const spouseGapX = 200; // 配偶水平间距，与 layoutSubtree 家庭块一致
+      const orphanIdSet = new Set(orphanNodes.map(n => n.id));
+      const placedOrphanIds = new Set<string>();
+      let orphanRow = 0;
+
+      orphanNodes.forEach((node) => {
+        if (placedOrphanIds.has(node.id)) return;
+
+        const person = (node.data as any)?.person as Person | undefined;
+        const spouses = person?.relations?.spouses || [];
+
+        // 寻找也在孤立节点列表中、且尚未处理的配偶
+        const spouseEntry = spouses.find(s =>
+          orphanIdSet.has(s.id) && !placedOrphanIds.has(s.id)
+        );
+
+        const y = orphanStartY + orphanRow * orphanGapY;
+
+        if (spouseEntry && person) {
+          const spouseObj = project?.persons[spouseEntry.id];
+          const spouseNode = nodeMap.get(spouseEntry.id);
+          if (spouseObj && spouseNode) {
+            // 男左女右；同性别按 id 排序，保持稳定
+            let leftIsSelf: boolean;
+            if (person.gender === 'male' && spouseObj.gender === 'female') {
+              leftIsSelf = true;
+            } else if (person.gender === 'female' && spouseObj.gender === 'male') {
+              leftIsSelf = false;
+            } else {
+              leftIsSelf = node.id < spouseEntry.id;
+            }
+            const leftNode = leftIsSelf ? node : spouseNode;
+            const rightNode = leftIsSelf ? spouseNode : node;
+
+            leftNode.position.x = orphanStartX;
+            leftNode.position.y = y;
+            rightNode.position.x = orphanStartX + spouseGapX;
+            rightNode.position.y = y;
+
+            placedOrphanIds.add(node.id);
+            placedOrphanIds.add(spouseEntry.id);
+            orphanRow++;
+            return;
+          }
+        }
+
+        // 无配偶或配偶不在孤立节点中，纵向排列
         node.position.x = orphanStartX;
-        node.position.y = orphanStartY + index * orphanGapY;
+        node.position.y = y;
+        placedOrphanIds.add(node.id);
+        orphanRow++;
       });
     }
 
