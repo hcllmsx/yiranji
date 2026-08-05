@@ -16,7 +16,6 @@ import { isTauri, convertLocalSrc, saveMediaFile, deleteMediaFile } from '../uti
 import AvatarCropModal from '../components/AvatarCropModal';
 import type { Person, Gender, LunarDate, SpouseRelationType, Relations } from '../types';
 import { getAdoptiveFathers, getAdoptiveMothers } from '../types';
-import chinaRegions from '../data/china-regions.json';
 import './PersonEditPage.css';
 
 // 产生年份列表 (1900 - 2030)
@@ -28,12 +27,20 @@ const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'))
 
 // 中国行政区划数据类型（省 → 市 → 县区 → 乡镇街道）
 type ChinaRegions = Record<string, Record<string, Record<string, string[]>>>;
-const REGIONS = chinaRegions as ChinaRegions;
 
 export default function PersonEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { project, getPerson, updatePerson, addPerson, getPersonsList, addSpouse, removeSpouse } = useFamilyStore();
+
+  // 中国行政区划数据：从 public/data 运行时 fetch，独立缓存，不经过打包器
+  const [REGIONS, setREGIONS] = useState<ChinaRegions>({});
+  useEffect(() => {
+    fetch(`${import.meta.env.BASE_URL}data/china-regions.json`)
+      .then((res) => res.json())
+      .then((data: ChinaRegions) => setREGIONS(data))
+      .catch(() => setREGIONS({}));
+  }, []);
 
   const isNew = id === 'new';
   const existingPerson = id && !isNew ? getPerson(id) : undefined;

@@ -681,4 +681,17 @@ a:hover {
   box-shadow: var(--shadow-sm);
 }
 
+/* ==================== 路由级 Loading ==================== */
+.route-loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: var(--radius-full);
+  animation: route-loading-spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
 
+@keyframes route-loading-spin {
+  to { transform: rotate(360deg); }
+}
