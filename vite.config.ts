@@ -15,6 +15,11 @@ export default defineConfig({
     host: '0.0.0.0', // 绑定所有网卡，TUN 模式下也能访问
     port: 5273, // 避开 Windows Hyper-V/WSL 保留的 5150-5249 端口范围（原 5173 会报 EACCES）
     strictPort: true, // 与 tauri.conf.json 的 devUrl 保持一致，端口被占时直接报错而非递增
+    watch: {
+      // 不监听 Rust 构建产物：全量重编译时 cargo 独占锁定 app_lib.dll，
+      // Vite 恰好 watch 到会抛 EBUSY 导致 dev server 崩溃（EBUSY: resource busy or locked）
+      ignored: ['**/src-tauri/target/**', '**/output/**', '**/_temp/**'],
+    },
   },
   build: {
     // 拆分大依赖为独立 chunk，减小主 bundle 体积，配合页面级 lazy 按需加载
