@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useFamilyStore } from '../store/familyStore';
-import { openDevtools, isTauri, selectFilePathForSaveZip, writeBinaryFile, getAppLogs } from '../utils/tauri';
+import { openDevtools, isTauri, selectFilePathForSaveZip, writeBinaryFile, getAppLogs, openUrl } from '../utils/tauri';
+import { checkForUpdate } from '../utils/updateChecker';
+import { useUpdateStore } from '../store/updateStore';
 import { createAnonymizedExport, sha256 } from '../utils';
 import './SettingsPage.css';
 
@@ -13,6 +15,7 @@ export default function SettingsPage() {
   const [showPasswordSection, setShowPasswordSection] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
 
   // -------------------- Toast --------------------
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -247,6 +250,28 @@ export default function SettingsPage() {
     }
   };
 
+  // -------------------- 检查更新 --------------------
+  const handleCheckUpdate = async () => {
+    if (isCheckingUpdate) return;
+    setIsCheckingUpdate(true);
+    try {
+      const result = await checkForUpdate();
+      if (result.status === 'update-available' && result.latestVersion) {
+        // 发现新版本：弹窗引导下载
+        useUpdateStore.getState().openUpdateDialog(result.latestVersion);
+      } else if (result.status === 'up-to-date') {
+        showToast(`当前已是最新版本（v${__APP_VERSION__}）`, 'success');
+      } else {
+        showToast('检查更新失败，请检查网络连接后重试', 'error');
+      }
+    } catch (err) {
+      console.error('检查更新失败:', err);
+      showToast('检查更新失败，请检查网络连接后重试', 'error');
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
   // ==================== 渲染 ====================
   return (
     <div className="settings-page">
@@ -448,27 +473,48 @@ export default function SettingsPage() {
               </button>
             </div>
             <div className="dev-tool-item">
-              <p className="dev-tool-label">数据脱敏 · 临时匿名化</p>
-              <p className="dev-tool-desc">将所有人员姓名临时替换为数字编号，仅供截图反馈使用，不修改底层数据。</p>
-              <button
-                type="button"
-                className={`btn btn-sm ${isAnonymized ? 'btn-warning' : 'btn-secondary'}`}
-                onClick={() => toggleAnonymization()}
-                title={isAnonymized ? '点击恢复原始姓名' : '点击临时匿名化所有姓名'}
-              >
-                {isAnonymized ? '🔓 取消匿名化' : '🔒 临时匿名化姓名'}
-              </button>
+              <p className="dev-tool-label">数据脱敏</p>
+              <p className="dev-tool-desc">
+                匿名化：将所有人员姓名临时替换为数字编号，仅供截图反馈使用，不修改底层数据。
+                <br />
+                导出脱敏数据：导出脱敏后的ZIP压缩包，不含任何隐私文件或信息，并附带运行日志（如有）。
+              </p>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${isAnonymized ? 'btn-warning' : 'btn-secondary'}`}
+                  onClick={() => toggleAnonymization()}
+                  title={isAnonymized ? '点击恢复原始姓名' : '点击临时匿名化所有姓名'}
+                >
+                  {isAnonymized ? '🔓 取消匿名化' : '🔒 临时匿名化姓名'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleExportAnonymized}
+                  disabled={isExporting}
+                >
+                  {isExporting ? '⏳ 正在导出...' : '📦 导出脱敏数据'}
+                </button>
+              </div>
             </div>
+          </div>
+        </div>
+
+        {/* 关于 */}
+        <div className="settings-section">
+          <div className="settings-section-title">关于</div>
+          <div className="dev-tools-grid">
             <div className="dev-tool-item">
-              <p className="dev-tool-label">数据脱敏 · 导出ZIP</p>
-              <p className="dev-tool-desc">导出脱敏ZIP压缩包，不含媒体文件，仅包含匿名姓名、性别及生卒年月信息，并附带运行日志（如有）。</p>
+              <p className="dev-tool-label">当前版本</p>
+              <p className="dev-tool-desc">以苒纪 Yiranji v{__APP_VERSION__}</p>
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
-                onClick={handleExportAnonymized}
-                disabled={isExporting}
+                onClick={handleCheckUpdate}
+                disabled={isCheckingUpdate}
               >
-                {isExporting ? '⏳ 正在导出...' : '📦 导出脱敏数据'}
+                {isCheckingUpdate ? '⏳ 检查中…' : '🔄 检查更新'}
               </button>
             </div>
           </div>
@@ -476,6 +522,15 @@ export default function SettingsPage() {
 
         {/* 底部提交 */}
         <div className="settings-footer">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ padding: '10px 24px' }}
+            onClick={() => openUrl('https://docs.qq.com/form/page/DRHJ3bmd6Q3RqaENT')}
+            title="通过在线表单提交问题与建议"
+          >
+            📝 问题反馈
+          </button>
           <button type="submit" className="btn btn-primary" style={{ padding: '10px 24px' }}>
             💾 保存设置
           </button>

@@ -42,6 +42,10 @@ _temp/
 # Init scripts (one-time use)
 _init_*.bat
 
+# Local dev menu (not for upload)
+1-run_menu.bat
+run_menu.ps1
+
 # OS files
 Thumbs.db
 Desktop.ini

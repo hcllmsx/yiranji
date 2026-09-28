@@ -127,6 +127,7 @@ Remove-Item -Recurse -Force node_modules/.vite
 - **行政区划数据** — 来自 [xiangyuecn/AreaCity-JsSpider-StatsGov](https://github.com/xiangyuecn/AreaCity-JsSpider-StatsGov)，包含省/市/县/乡镇四级数据
 - **农历转换** — [lunar-javascript](https://github.com/6tail/lunar-javascript)
 - **字体** — [霞鹜文楷](https://github.com/lxgw/LxgwWenKai) · [阿里巴巴普惠体](https://fonts.alibabagroup.com/)
+- **图片压缩** — 导出图片（JPG/PNG）的编解码基于 Google [Squoosh](https://github.com/GoogleChromeLabs/squoosh) 项目的 WASM 编解码器（经 [jSquash](https://github.com/jamsinclair/jSquash) 封装），底层使用 [MozJPEG](https://github.com/mozilla/mozjpeg)（JPEG 压缩）与 [Oxipng](https://github.com/oxipng/oxipng)（PNG 无损优化）
 
 ## License
 

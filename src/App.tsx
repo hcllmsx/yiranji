@@ -1,7 +1,10 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import WelcomePage from './pages/WelcomePage';
 import MainLayout from './components/MainLayout';
+import UpdateDialog from './components/UpdateDialog';
+import { checkForUpdate } from './utils/updateChecker';
+import { useUpdateStore } from './store/updateStore';
 import './index.css';
 
 // 页面级代码分割：各页面按需加载，减小首屏 bundle 体积
@@ -31,8 +34,25 @@ function RouteLoading() {
 }
 
 function App() {
+  // 启动静默检查更新：仅每次启动检查一次，发现新版本弹窗提示；失败不提示
+  const didSilentCheckRef = useRef(false);
+  useEffect(() => {
+    if (didSilentCheckRef.current) return;
+    didSilentCheckRef.current = true;
+    checkForUpdate()
+      .then((result) => {
+        if (result.status === 'update-available' && result.latestVersion) {
+          useUpdateStore.getState().openUpdateDialog(result.latestVersion);
+        }
+      })
+      .catch(() => {
+        // 静默检查失败不提示
+      });
+  }, []);
+
   return (
     <BrowserRouter>
+      <UpdateDialog />
       <Routes>
         <Route path="/" element={<WelcomePage />} />
         <Route element={<MainLayout />}>

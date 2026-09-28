@@ -1,7 +1,7 @@
 {
   "name": "yiranji",
   "private": true,
-  "version": "26.8.5",
+  "version": "26.9.28",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,11 +12,14 @@
     "tauri": "node scripts/sync-version.mjs && tauri"
   },
   "dependencies": {
+    "@jsquash/jpeg": "^1.6.0",
+    "@jsquash/oxipng": "^2.3.0",
     "@tauri-apps/plugin-shell": "^2.3.5",
     "@types/dagre": "^0.7.54",
     "@types/uuid": "^10.0.0",
     "@xyflow/react": "^12.11.1",
     "dagre": "^0.8.5",
+    "html-to-image": "^1.11.13",
     "jszip": "^3.10.1",
     "lunar-javascript": "^1.7.7",
     "react": "^19.2.7",

@@ -26,6 +26,16 @@ fn select_zip_file_path_for_save(default_name: String) -> Result<Option<String>,
 }
 
 #[tauri::command]
+fn select_export_file_path(default_name: String, filter_name: String, extensions: Vec<String>) -> Result<Option<String>, String> {
+    let file = rfd::FileDialog::new()
+        .add_filter(&filter_name, &extensions)
+        .set_file_name(&default_name)
+        .save_file();
+    
+    Ok(file.map(|p| p.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
 fn select_yrj_file_path_for_open() -> Result<Option<String>, String> {
     let file = rfd::FileDialog::new()
         .add_filter("以苒纪工程文件 (*.yrj)", &["yrj"])
@@ -280,6 +290,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             select_yrj_file_path_for_save,
             select_zip_file_path_for_save,
+            select_export_file_path,
             select_yrj_file_path_for_open,
             select_project_parent_dir,
             create_project_workspace,

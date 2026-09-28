@@ -38,6 +38,23 @@ export async function selectFilePathForSaveZip(defaultName: string): Promise<str
 }
 
 /**
+ * 弹出原生保存文件对话框，通用导出路径（按扩展名过滤）
+ */
+export async function selectExportFilePath(
+  defaultName: string,
+  filterName: string,
+  extensions: string[]
+): Promise<string | null> {
+  const api = await getTauriApi();
+  if (!api) return null;
+  return api.invoke<string | null>('select_export_file_path', {
+    defaultName,
+    filterName,
+    extensions,
+  });
+}
+
+/**
  * 弹出原生打开文件对话框，选择 .yrj 文件
  */
 export async function selectFilePathForOpen(): Promise<string | null> {

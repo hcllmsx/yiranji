@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "以苒纪",
-  "version": "26.8.5",
+  "version": "26.9.28",
   "identifier": "com.yiranji.desktop",
   "build": {
     "frontendDist": "../dist",

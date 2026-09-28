@@ -210,6 +210,7 @@
 .tree-node-lifespan {
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);
+  white-space: nowrap;
 }
 
 .tree-node-perspective-tag {
