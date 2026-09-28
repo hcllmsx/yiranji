@@ -9,7 +9,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "sync-version": "node scripts/sync-version.mjs",
-    "tauri": "node scripts/sync-version.mjs && tauri"
+    "tauri": "node scripts/sync-version.mjs && tauri",
+    "build:installer": "npm run tauri build && node scripts/rename-installer.mjs"
   },
   "dependencies": {
     "@jsquash/jpeg": "^1.6.0",
