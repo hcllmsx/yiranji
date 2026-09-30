@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useFamilyStore } from '../store/familyStore';
 import { v4 as uuidv4 } from 'uuid';
@@ -18,8 +18,45 @@ import type { Person, Gender, LunarDate, SpouseRelationType, Relations } from '.
 import { getAdoptiveFathers, getAdoptiveMothers } from '../types';
 import './PersonEditPage.css';
 
-// 产生年份列表 (1900 - 2030)
-const YEARS = Array.from({ length: 131 }, (_, i) => 1900 + i);
+// 生卒日期允许的最早年份
+const MIN_YEAR = 1900;
+
+// 日期上限相对“今天”的容差（天）：留一点余量，避免用户时钟有少许偏差时被误伤
+const DATE_LIMIT_TOLERANCE_DAYS = 3;
+
+/**
+ * 生成年份下拉选项：范围 [MIN_YEAR, maxYear]
+ * extraYear 用于包容历史数据里超出上限的年份，避免下拉框找不到匹配项而错位显示
+ */
+function buildYearOptions(maxYear: number, extraYear?: number): number[] {
+  const years = Array.from({ length: maxYear - MIN_YEAR + 1 }, (_, i) => MIN_YEAR + i);
+  if (extraYear && extraYear > maxYear) years.push(extraYear);
+  return years;
+}
+
+// 农历月份中文名（正月、冬月、腊月等传统叫法）
+const LUNAR_MONTH_NAMES = ['', '正', '二', '三', '四', '五', '六', '七', '八', '九', '十', '冬', '腊'];
+
+function getLunarMonthLabel(m: number): string {
+  return LUNAR_MONTH_NAMES[m] || `${m}`;
+}
+
+/**
+ * 构造某农历年内的月份序列（含闰月）
+ * 闰月紧跟被闰月份之后，因此数组下标才代表“月份先后”，不能直接用月号比较
+ */
+function buildLunarMonthSequence(y: number): { value: string; label: string; m: number; isLeap: boolean }[] {
+  const leapMonth = getLunarLeapMonth(y);
+  const list: { value: string; label: string; m: number; isLeap: boolean }[] = [];
+  for (let m = 1; m <= 12; m++) {
+    list.push({ value: `${m}`, label: getLunarMonthLabel(m), m, isLeap: false });
+    if (leapMonth > 0 && leapMonth === m) {
+      list.push({ value: `leap-${m}`, label: `闰${getLunarMonthLabel(m)}`, m, isLeap: true });
+    }
+  }
+  return list;
+}
+
 // 产生小时列表 (00 - 23)
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
 // 产生分钟/秒列表 (00 - 59)
@@ -117,6 +154,35 @@ export default function PersonEditPage() {
   const [sDeathMin, setSDeathMin] = useState<string>('00');
   const [sDeathSec, setSDeathSec] = useState<string>('00');
 
+  // ==================== 日期上限（跟随系统本地时间） ====================
+  // 生卒日期不可能出现在未来，因此每进入本页取一次系统时间，公历上限为“今天 + 容差天数”，
+  // 农历上限随之取该日的农历日期（春节前公历已是新年、农历仍停在上一年，所以两者分开算）
+  const dateLimit = useMemo(() => {
+    const now = new Date();
+    const limitDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + DATE_LIMIT_TOLERANCE_DAYS);
+
+    const year = limitDate.getFullYear();
+    const month = limitDate.getMonth() + 1;
+    const day = limitDate.getDate();
+    const limitStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00`;
+    const lunar = solarToLunar(limitStr);
+
+    return {
+      year,
+      month,
+      day,
+      // 年月日压成数字，便于整体比较是否超过上限
+      code: year * 10000 + month * 100 + day,
+      lunarYear: lunar?.year ?? year,
+      // 上限日对应的农历月/日（闰月时 month 与 isLeap 共同定位），换算失败则退化为“不限制”
+      lunar: {
+        month: lunar?.month ?? 12,
+        day: lunar?.day ?? 31,
+        isLeap: lunar?.isLeap ?? false,
+      },
+    };
+  }, []);
+
   // ==================== 级联天数计算工具 ====================
 
   // 获取某年公历月的天数
@@ -135,17 +201,6 @@ export default function PersonEditPage() {
     }
   };
 
-  // 获取某农历年份的闰月月份 (0 表示没有)
-  const getLeapMonthOfYear = (y: number): number => {
-    return getLunarLeapMonth(y);
-  };
-
-  // 转换农历月份为中文汉字数字（正月、冬月、腊月等传统叫法）
-  const getLunarMonthName = (m: number): string => {
-    const ChineseMonths = ['', '正', '二', '三', '四', '五', '六', '七', '八', '九', '十', '冬', '腊'];
-    return ChineseMonths[m] || `${m}`;
-  };
-
   // 转换农历日期为中文汉字数字（如初一、十一、廿一等）
   const getLunarDayName = (d: number): string => {
     const ChineseDays = [
@@ -159,16 +214,24 @@ export default function PersonEditPage() {
 
   // ==================== 联动计算核心 ====================
 
+  // 0. 把公历日期收敛到上限（今天 + 容差天数）及以前，同时修正非法日期（如 2 月 30 日）
+  const clampSolarToLimit = useCallback((y: number, m: number, d: number) => {
+    if (y * 10000 + m * 100 + d > dateLimit.code) {
+      return { y: dateLimit.year, m: dateLimit.month, d: dateLimit.day };
+    }
+    const maxDays = getSolarDaysInMonth(y, m);
+    return { y, m, d: d > maxDays ? maxDays : d };
+  }, [dateLimit]);
+
   // 1. 公历变更联动推算农历
   const handleSolarChange = useCallback((y: number, m: number, d: number) => {
-    const maxDays = getSolarDaysInMonth(y, m);
-    const validD = d > maxDays ? maxDays : d;
+    const { y: validY, m: validM, d: validD } = clampSolarToLimit(y, m, d);
 
-    setSBirthYear(y);
-    setSBirthMonth(m);
+    setSBirthYear(validY);
+    setSBirthMonth(validM);
     setSBirthDay(validD);
 
-    const formattedDate = `${y}-${String(m).padStart(2, '0')}-${String(validD).padStart(2, '0')}T00:00:00`;
+    const formattedDate = `${validY}-${String(validM).padStart(2, '0')}-${String(validD).padStart(2, '0')}T00:00:00`;
     const lunar = solarToLunar(formattedDate);
     if (lunar) {
       setLBirthYear(lunar.year);
@@ -176,24 +239,51 @@ export default function PersonEditPage() {
       setLBirthDay(lunar.day);
       setLBirthIsLeap(lunar.isLeap);
     }
-  }, []);
+  }, [clampSolarToLimit]);
 
-  // 2. 农历变更联动推算公历
-  const handleLunarChange = useCallback((y: number, m: number, isLeap: boolean, d: number) => {
-    // 限制农历日期在当前农历月的合法天数范围内
+  // 2. 把农历日期收敛到“上限日的农历日期”及以前
+  //    只有落在上限农历年的日期才有上限；比较依据是月份的先后次序（闰月紧随被闰月份），不是月号
+  const clampLunarToLimit = useCallback((y: number, m: number, isLeap: boolean, d: number) => {
     const maxDays = getLunarDaysInMonth(y, m, isLeap);
     const validD = d > maxDays ? maxDays : d;
 
+    if (y !== dateLimit.lunarYear) {
+      return { m, isLeap, d: validD };
+    }
+
+    const months = buildLunarMonthSequence(y);
+    const limitIndex = months.findIndex((o) => o.m === dateLimit.lunar.month && o.isLeap === dateLimit.lunar.isLeap);
+    const currentIndex = months.findIndex((o) => o.m === m && o.isLeap === isLeap);
+    if (limitIndex < 0 || currentIndex < 0) {
+      // 定位失败（异常年份）时不做上限，保证不会误伤
+      return { m, isLeap, d: validD };
+    }
+
+    if (currentIndex > limitIndex) {
+      // 晚于上限所在的农历月，直接收敛到上限日
+      return { m: dateLimit.lunar.month, isLeap: dateLimit.lunar.isLeap, d: dateLimit.lunar.day };
+    }
+    if (currentIndex === limitIndex) {
+      return { m, isLeap, d: Math.min(validD, dateLimit.lunar.day) };
+    }
+    return { m, isLeap, d: validD };
+  }, [dateLimit]);
+
+  // 3. 农历变更联动推算公历
+  const handleLunarChange = useCallback((y: number, m: number, isLeap: boolean, d: number) => {
+    // 限制农历日期在当前农历月的合法天数内，且不超过上限日的农历日期
+    const clamped = clampLunarToLimit(y, m, isLeap, d);
+
     setLBirthYear(y);
-    setLBirthMonth(m);
-    setLBirthIsLeap(isLeap);
-    setLBirthDay(validD);
+    setLBirthMonth(clamped.m);
+    setLBirthIsLeap(clamped.isLeap);
+    setLBirthDay(clamped.d);
 
     const lunarData: LunarDate = {
       year: y,
-      month: m,
-      day: validD,
-      isLeap,
+      month: clamped.m,
+      day: clamped.d,
+      isLeap: clamped.isLeap,
     };
     const solarStr = lunarToSolar(lunarData);
     if (solarStr) {
@@ -202,9 +292,17 @@ export default function PersonEditPage() {
       setSBirthMonth(date.getMonth() + 1);
       setSBirthDay(date.getDate());
     }
-  }, []);
+  }, [clampLunarToLimit]);
 
-  // 3. 数据加载与初次数据推算联动
+  // 4. 逝世日期（公历）变更：同样不允许超过上限
+  const handleSolarDeathChange = useCallback((y: number, m: number, d: number) => {
+    const { y: validY, m: validM, d: validD } = clampSolarToLimit(y, m, d);
+    setSDeathYear(validY);
+    setSDeathMonth(validM);
+    setSDeathDay(validD);
+  }, [clampSolarToLimit]);
+
+  // 5. 数据加载与初次数据推算联动
   useEffect(() => {
     if (existingPerson) {
       setSurname(existingPerson.surname);
@@ -936,32 +1034,68 @@ export default function PersonEditPage() {
 
   // ==================== 选项集生成 ====================
 
-  // 生成当前公历年的最大天数列表
-  const solarDaysList = Array.from(
-    { length: getSolarDaysInMonth(sBirthYear, sBirthMonth) },
-    (_, i) => i + 1
+  // 公历年份选项：上限为上限年份（随系统时间自动前移），并包容历史数据里超范围的年份
+  const solarYearOptions = useMemo(
+    () => buildYearOptions(dateLimit.year, Math.max(sBirthYear, sDeathYear)),
+    [dateLimit.year, sBirthYear, sDeathYear]
   );
 
-  const leapMonth = getLeapMonthOfYear(lBirthYear);
-  const lunarMonthsOptions: { value: string; label: string; m: number; isLeap: boolean }[] = [];
-  for (let m = 1; m <= 12; m++) {
-    lunarMonthsOptions.push({ value: `${m}`, label: getLunarMonthName(m), m, isLeap: false });
-    if (leapMonth > 0 && leapMonth === m) {
-      lunarMonthsOptions.push({ value: `leap-${m}`, label: `闰${getLunarMonthName(m)}`, m, isLeap: true });
+  // 农历年份选项：上限为上限日的农历年
+  const lunarYearOptions = useMemo(
+    () => buildYearOptions(dateLimit.lunarYear, lBirthYear),
+    [dateLimit.lunarYear, lBirthYear]
+  );
+
+  // 公历月份选项：年份为上限年份时只列到上限所在月；超范围的历史数据保留原值以免下拉框错位
+  const buildSolarMonthOptions = (year: number, month: number): number[] => {
+    const maxMonth = year === dateLimit.year ? dateLimit.month : 12;
+    const months = Array.from({ length: maxMonth }, (_, i) => i + 1);
+    if (month > maxMonth) months.push(month);
+    return months;
+  };
+
+  // 公历日期选项：年月均为上限年月时只列到上限日；超范围的历史数据保留原值
+  const buildSolarDayOptions = (year: number, month: number, day: number): number[] => {
+    let maxDay = getSolarDaysInMonth(year, month);
+    if (year === dateLimit.year && month === dateLimit.month) {
+      maxDay = Math.min(maxDay, dateLimit.day);
     }
-  }
+    const days = Array.from({ length: Math.max(maxDay, 1) }, (_, i) => i + 1);
+    if (day > maxDay) days.push(day);
+    return days;
+  };
 
-  // 生成当前农历月的天数列表
-  const lunarDaysList = Array.from(
-    { length: getLunarDaysInMonth(lBirthYear, lBirthMonth, lBirthIsLeap) },
-    (_, i) => i + 1
-  );
+  // 生成当前公历年的最大天数列表
+  const solarDaysList = buildSolarDayOptions(sBirthYear, sBirthMonth, sBirthDay);
+
+  // 农历月份选项：上限农历年只列到上限所在的农历月（按月份先后截断，闰月按其实际位置参与）
+  // 历史数据里超出上限的月份保留原选中项，避免下拉框找不到匹配项而错位
+  const allLunarMonths = buildLunarMonthSequence(lBirthYear);
+  const inLimitLunarYear = lBirthYear === dateLimit.lunarYear;
+  const limitLunarMonthIndex = inLimitLunarYear
+    ? allLunarMonths.findIndex((o) => o.m === dateLimit.lunar.month && o.isLeap === dateLimit.lunar.isLeap)
+    : -1;
+  const lunarMonthsOptions = allLunarMonths.filter((opt, index) => {
+    if (limitLunarMonthIndex < 0) return true;
+    if (index <= limitLunarMonthIndex) return true;
+    return opt.m === lBirthMonth && opt.isLeap === lBirthIsLeap;
+  });
+
+  // 生成当前农历月的天数列表：正在录入上限所在的农历月时只列到上限日
+  const lunarDaysList = (() => {
+    let maxDay = getLunarDaysInMonth(lBirthYear, lBirthMonth, lBirthIsLeap);
+    const isLimitLunarMonth =
+      limitLunarMonthIndex >= 0 && lBirthMonth === dateLimit.lunar.month && lBirthIsLeap === dateLimit.lunar.isLeap;
+    if (isLimitLunarMonth) {
+      maxDay = Math.min(maxDay, dateLimit.lunar.day);
+    }
+    const days = Array.from({ length: Math.max(maxDay, 1) }, (_, i) => i + 1);
+    if (lBirthDay > maxDay) days.push(lBirthDay);
+    return days;
+  })();
 
   // 逝世公历最大天数
-  const deathSolarDaysList = Array.from(
-    { length: getSolarDaysInMonth(sDeathYear, sDeathMonth) },
-    (_, i) => i + 1
-  );
+  const deathSolarDaysList = buildSolarDayOptions(sDeathYear, sDeathMonth, sDeathDay);
 
   return (
     <div className="person-edit-page">
@@ -1206,7 +1340,7 @@ export default function PersonEditPage() {
                     value={sBirthYear}
                     onChange={(e) => handleSolarChange(parseInt(e.target.value), sBirthMonth, sBirthDay)}
                   >
-                    {YEARS.map((y) => (
+                    {solarYearOptions.map((y) => (
                       <option key={y} value={y}>{y}</option>
                     ))}
                   </select>
@@ -1218,7 +1352,7 @@ export default function PersonEditPage() {
                     value={sBirthMonth}
                     onChange={(e) => handleSolarChange(sBirthYear, parseInt(e.target.value), sBirthDay)}
                   >
-                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                    {buildSolarMonthOptions(sBirthYear, sBirthMonth).map((m) => (
                       <option key={m} value={m}>{m}</option>
                     ))}
                   </select>
@@ -1303,7 +1437,7 @@ export default function PersonEditPage() {
                     value={lBirthYear}
                     onChange={(e) => handleLunarChange(parseInt(e.target.value), lBirthMonth, lBirthIsLeap, lBirthDay)}
                   >
-                    {YEARS.map((y) => (
+                    {lunarYearOptions.map((y) => (
                       <option key={y} value={y}>{y}</option>
                     ))}
                   </select>
@@ -1416,9 +1550,9 @@ export default function PersonEditPage() {
                     style={{ width: '100px', textAlign: 'center' }}
                     className="form-input date-number-input"
                     value={sDeathYear}
-                    onChange={(e) => setSDeathYear(parseInt(e.target.value))}
+                    onChange={(e) => handleSolarDeathChange(parseInt(e.target.value), sDeathMonth, sDeathDay)}
                   >
-                    {YEARS.map((y) => (
+                    {solarYearOptions.map((y) => (
                       <option key={y} value={y}>{y}</option>
                     ))}
                   </select>
@@ -1428,9 +1562,9 @@ export default function PersonEditPage() {
                     style={{ width: '100px', textAlign: 'center' }}
                     className="form-input date-number-input"
                     value={sDeathMonth}
-                    onChange={(e) => setSDeathMonth(parseInt(e.target.value))}
+                    onChange={(e) => handleSolarDeathChange(sDeathYear, parseInt(e.target.value), sDeathDay)}
                   >
-                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                    {buildSolarMonthOptions(sDeathYear, sDeathMonth).map((m) => (
                       <option key={m} value={m}>{m}</option>
                     ))}
                   </select>
@@ -1440,11 +1574,7 @@ export default function PersonEditPage() {
                     style={{ width: '100px', textAlign: 'center' }}
                     className="form-input date-number-input"
                     value={sDeathDay}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value);
-                      const max = getSolarDaysInMonth(sDeathYear, sDeathMonth);
-                      setSDeathDay(val > max ? max : val);
-                    }}
+                    onChange={(e) => handleSolarDeathChange(sDeathYear, sDeathMonth, parseInt(e.target.value))}
                   >
                     {deathSolarDaysList.map((d) => (
                       <option key={d} value={d}>{d}</option>

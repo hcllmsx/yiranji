@@ -6,16 +6,19 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: var(--space-8);
+  /* 底部额外留出版本号所占的空间，避免最近打开列表等内容压到版本号文字上 */
+  padding: var(--space-8) var(--space-8) calc(var(--space-8) + var(--space-6));
   background-color: var(--color-bg);
   position: relative;
-  overflow: hidden;
+  /* 高缩放下内容会超高，允许纵向滚动而不是直接裁掉 */
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
-/* 背景装饰 */
+/* 背景装饰（固定定位，避免为页面制造额外的滚动区域） */
 .welcome-page::before {
   content: '';
-  position: absolute;
+  position: fixed;
   top: -20%;
   right: -10%;
   width: 600px;
@@ -27,7 +30,7 @@
 
 .welcome-page::after {
   content: '';
-  position: absolute;
+  position: fixed;
   bottom: -15%;
   left: -5%;
   width: 400px;
@@ -43,6 +46,8 @@
   animation: slideUp 600ms ease;
   position: relative;
   z-index: 1;
+  /* 不随窗口变小而被压缩，保证高缩放下内容完整可滚动查看 */
+  flex-shrink: 0;
   margin-top: -5vh; /* 整体往上移一些，改善视觉分布 */
   user-select: none; /* 避免拖选页脚版本号时连带选中上方内容 */
 }
@@ -229,6 +234,9 @@
 .welcome-version {
   position: absolute;
   bottom: var(--space-6);
+  /* 始终位于内容之上，即使窗口极窄也不会被列表遮挡 */
+  z-index: 2;
+  white-space: nowrap;
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);
   letter-spacing: 0.05em;
