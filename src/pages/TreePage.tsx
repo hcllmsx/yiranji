@@ -27,6 +27,13 @@ import { convertLocalSrc } from '../utils/tauri';
 import { type Person, getAdoptiveFathers, getAdoptiveMothers } from '../types';
 import './TreePage.css';
 
+// ==================== 进入页面时的开场视口动画参数 ====================
+// 时序：先瞬时呈现整棵树的全局视图 → 短暂停留 → 平滑缩放定位到主视角人物
+const ENTRY_OVERVIEW_HOLD_MS = 520;   // 全局视图的停留时长
+const ENTRY_FOCUS_DURATION_MS = 850;  // 聚焦到主视角人物的过渡时长
+const ENTRY_FOCUS_ZOOM = 1.2;         // 聚焦目标缩放（1.0 即 1:1，大于 1 会更放大）
+const ENTRY_FOCUS_MAX_ZOOM = 1.2;     // 聚焦缩放的硬上限（绝对值还受 ReactFlow 的 maxZoom=2 约束）
+
 // ==================== 自定义节点组件 ====================
 
 interface PersonNodeData {
@@ -288,7 +295,7 @@ function TreePageContent() {
   const { project, getPersonsList, addPerson, setRelation, updatePerson, deletePerson, currentFilePath, saveCustomLayout, clearCustomLayout } = useFamilyStore();
   const persons = getPersonsList();
   // 用于一次性初始适应窗口 & 实时读取所有节点位置
-  const { fitView, getNodes } = useReactFlow();
+  const { fitView, getNodes, setCenter, getViewport } = useReactFlow();
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -1210,17 +1217,50 @@ function TreePageContent() {
     buildGraph();
   }, [buildGraph]);
 
-  // 初始构建后自动适应窗口（仅一次）
+  // 初始构建后的开场动画（仅一次）：先全景，再平滑聚焦到主视角人物
   const didInitFitViewRef = useRef(false);
+  const entryFocusTimerRef = useRef<number | null>(null);
   useEffect(() => {
-    if (nodes.length > 0 && !didInitFitViewRef.current) {
-      didInitFitViewRef.current = true;
-      // 延迟一帧等 ReactFlow 渲染完成
+    if (nodes.length === 0 || didInitFitViewRef.current) return;
+    didInitFitViewRef.current = true;
+
+    // 尊重系统的“减少动态效果”设置：直接落到目标视角，不做过渡
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const perspectiveId = project?.meta.defaultPerspectiveId;
+
+    // 延迟一帧等 ReactFlow 渲染完成
+    requestAnimationFrame(() => {
+      // 第一幕：整棵树的全局视图（瞬时，先让用户看到全貌）
+      fitView({ padding: 0.3 });
+
+      // 再等一帧，等视口变更落到 DOM 后再读实际缩放值
       requestAnimationFrame(() => {
-        fitView({ padding: 0.3 });
+        const focusNode = getNodes().find((n) => n.id === perspectiveId);
+        // 找不到主视角人物时保持全景，不做第二幕
+        if (!focusNode) return;
+
+        // 目标缩放：默认落到 ENTRY_FOCUS_ZOOM；整棵树本来就很大时按比例收一点，避免跳得过猛
+        const fitZoom = getViewport().zoom;
+        const targetZoom = Math.min(ENTRY_FOCUS_MAX_ZOOM, Math.max(ENTRY_FOCUS_ZOOM, fitZoom * 1.5));
+
+        entryFocusTimerRef.current = window.setTimeout(() => {
+          entryFocusTimerRef.current = null;
+          // nodeOrigin 为 [0.5, 0.5]，节点坐标即其中心，直接居中即可
+          setCenter(focusNode.position.x, focusNode.position.y, {
+            zoom: targetZoom,
+            duration: reduceMotion ? 0 : ENTRY_FOCUS_DURATION_MS,
+          });
+        }, reduceMotion ? 0 : ENTRY_OVERVIEW_HOLD_MS);
       });
-    }
-  }, [nodes.length, fitView]);
+    });
+
+    return () => {
+      if (entryFocusTimerRef.current !== null) {
+        window.clearTimeout(entryFocusTimerRef.current);
+        entryFocusTimerRef.current = null;
+      }
+    };
+  }, [nodes.length, fitView, getNodes, setCenter, getViewport, project?.meta.defaultPerspectiveId]);
 
   // 右键菜单处理
   const handleNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
