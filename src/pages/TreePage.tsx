@@ -14,7 +14,6 @@ import {
   BaseEdge,
   EdgeLabelRenderer,
   getSmoothStepPath,
-  useStore,
   Handle,
   Position,
   Background,
@@ -39,9 +38,6 @@ import {
 } from '../utils/siblingOrder';
 import { convertLocalSrc } from '../utils/tauri';
 import {
-  getTreeDisplayMode,
-  TREE_DISPLAY_MODE_EVENT,
-  type TreeDisplayMode,
   getTreeLayoutMode,
   setTreeLayoutMode,
   TREE_LAYOUT_MODE_EVENT,
@@ -391,67 +387,12 @@ const isPerspectiveDescendant = (
   return children.some((child) => isPerspectiveDescendant(child.id, targetId, personsMap));
 };
 
-function buildParentStepPath(
-  sourceX: number,
-  sourceY: number,
-  targetX: number,
-  targetY: number,
-  cutX: number | null,
-): string | null {
-  const OFFSET = 20;
-  const R = 5;
-  const sgY = sourceY + OFFSET; // 家长卡片下方留白点（sourceHandle=bottom）
-  const tgY = targetY - OFFSET; // 子女卡片上方留白点（targetHandle=top）
-  if (tgY <= sgY + 2 * R) return null; // 子女不在下方或间距过小，交给原生路径
-
-  const barY = (sgY + tgY) / 2; // 原生横杠高度 = 两个留白点的中点
-  const endX = cutX ?? targetX;
-
-  // 与原生 getBend 一致的圆角
-  const bend = (
-    a: { x: number; y: number },
-    b: { x: number; y: number },
-    c: { x: number; y: number },
-  ): string => {
-    const size = Math.min(
-      Math.hypot(a.x - b.x, a.y - b.y) / 2,
-      Math.hypot(b.x - c.x, b.y - c.y) / 2,
-      R,
-    );
-    if ((a.x === b.x && b.x === c.x) || (a.y === b.y && b.y === c.y)) {
-      return `L${b.x} ${b.y}`;
-    }
-    if (a.y === b.y) {
-      const xDir = a.x < c.x ? -1 : 1;
-      const yDir = a.y < c.y ? 1 : -1;
-      return `L ${b.x + size * xDir},${b.y}Q ${b.x},${b.y} ${b.x},${b.y + size * yDir}`;
-    }
-    const xDir = a.x < c.x ? 1 : -1;
-    const yDir = a.y < c.y ? -1 : 1;
-    return `L ${b.x},${b.y + size * yDir}Q ${b.x},${b.y} ${b.x + size * xDir},${b.y}`;
-  };
-
-  const pts: Array<{ x: number; y: number }> = [
-    { x: sourceX, y: sourceY },
-    { x: sourceX, y: sgY },
-    { x: sourceX, y: barY },
-  ];
-  if (Math.abs(endX - sourceX) > 0.5) {
-    pts.push({ x: endX, y: barY });
-  }
-  if (cutX === null) {
-    // junction 边：完整路径（横线 → 子女竖线）
-    pts.push({ x: targetX, y: tgY }, { x: targetX, y: targetY });
-  }
-
-  let path = `M${pts[0].x} ${pts[0].y}`;
-  for (let i = 1; i < pts.length - 1; i++) {
-    path += bend(pts[i - 1], pts[i], pts[i + 1]);
-  }
-  path += `L${pts[pts.length - 1].x} ${pts[pts.length - 1].y}`;
-  return path;
-}
-
+/**
+ * 亲子连线组件：
+ * 使用 ReactFlow 原生标准的 smoothstep 完整折线（绝不断线、拖动节点时始终完整贴合），
+ * 并且将「生父 / 生母 / 养父 / 养母」称呼标签固定在家长卡片下沿中点正下方，
+ * 避免标签随子女卡片距离漂移到半路。
+ */
 function ParentLabeledEdge({
   id,
   sourceX,
@@ -464,37 +405,17 @@ function ParentLabeledEdge({
   markerEnd,
   style,
   label,
-  data,
 }: EdgeProps) {
-  const otherId = (data as { otherParentId?: string } | undefined)?.otherParentId;
-  const otherNode = useStore((s) => (otherId ? s.nodeLookup.get(otherId) : undefined));
-  // 用 junction 边同款的 handle 坐标（ReactFlow 对 bottom handle 的 sourceX 就是这么算的），
-  // 保证截断点与 junction 竖线严丝合缝，不出现亚像素缺口。
-  const otherHandle =
-    otherNode?.internals.handleBounds?.source?.find((h) => h.id === 'bottom') ??
-    otherNode?.internals.handleBounds?.source?.[0];
-  const otherX = otherNode
-    ? otherNode.internals.positionAbsolute.x +
-      (otherHandle
-        ? otherHandle.x + otherHandle.width / 2
-        : (otherNode.measured?.width ?? 0) / 2)
-    : sourceX;
-
-  // junction：离子女更近的那位家长（距离相等时取 x 更小者，保证两条边判定一致）
-  const dSelf = Math.abs(targetX - sourceX);
-  const dOther = Math.abs(targetX - otherX);
-  const isJunction = dSelf < dOther || (dSelf === dOther && sourceX <= otherX);
-
-  // 横杠只画一次：junction 边画完整路径；远端家长的边在 junction 竖线处截断。
-  // 自绘失败（异常布局）时回退为原生完整路径。
-  const junctionX = isJunction ? sourceX : otherX;
-  const path = buildParentStepPath(sourceX, sourceY, targetX, targetY, isJunction ? null : junctionX)
-    ?? getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition })[0];
+  const [path] = getSmoothStepPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+  });
 
   const stroke = (style?.stroke as string) || '#b1b1b7';
-
-  // 家长端挂点（sourceHandle = bottom，即家长卡片下沿中点）
-  // 标签就压在这个点下方一点点：避开来指家长的箭头（约 12px），又不至于离开卡片太远。
   const LABEL_GAP = 24;
   const labelX = sourceX;
   const labelY = sourceY + LABEL_GAP;
@@ -650,13 +571,6 @@ function TreePageContent() {
     };
     window.addEventListener(TREE_LAYOUT_MODE_EVENT, onLayoutModeChange);
     return () => window.removeEventListener(TREE_LAYOUT_MODE_EVENT, onLayoutModeChange);
-  }, []);
-
-  const [treeDisplayMode, setTreeDisplayModeState] = useState<TreeDisplayMode>(() => getTreeDisplayMode());
-  useEffect(() => {
-    const onModeChange = () => setTreeDisplayModeState(getTreeDisplayMode());
-    window.addEventListener(TREE_DISPLAY_MODE_EVENT, onModeChange);
-    return () => window.removeEventListener(TREE_DISPLAY_MODE_EVENT, onModeChange);
   }, []);
 
   useEffect(() => {
@@ -1065,9 +979,6 @@ function TreePageContent() {
 
     const graphEdges: Edge[] = [];
     const edgeSet = new Set<string>(); // 防止重复边
-    // 增强模式：生父/生母连线走 parentLabeled 自定义边（称呼贴家长卡片 + 横杠只画一次）；
-    // 经典模式：与原版完全一致，全部用原生 smoothstep 连线。
-    const enhancedEdges = treeDisplayMode === 'enhanced';
 
     personsList.forEach((person) => {
       // 亲子关系：生父、生母各自都与子女连线。
@@ -1078,16 +989,13 @@ function TreePageContent() {
         const key = `${person.relations.father}->${person.id}`;
         if (!edgeSet.has(key)) {
           edgeSet.add(key);
-          const hasBoth =
-            !!person.relations.mother && person.relations.mother !== person.relations.father;
           graphEdges.push({
             id: key,
             source: person.relations.father,
             target: person.id,
             sourceHandle: 'bottom',
             targetHandle: 'top',
-            type: enhancedEdges ? 'parentLabeled' : 'smoothstep',
-            data: enhancedEdges && hasBoth ? { otherParentId: person.relations.mother } : undefined,
+            type: 'parentLabeled',
             style: { stroke: '#b1b1b7', strokeWidth: 2 },
             animated: false,
           });
@@ -1097,15 +1005,13 @@ function TreePageContent() {
         const key = `${person.relations.mother}->${person.id}`;
         if (!edgeSet.has(key)) {
           edgeSet.add(key);
-          const hasBoth = !!person.relations.father;
           graphEdges.push({
             id: key,
             source: person.relations.mother,
             target: person.id,
             sourceHandle: 'bottom',
             targetHandle: 'top',
-            type: enhancedEdges ? 'parentLabeled' : 'smoothstep',
-            data: enhancedEdges && hasBoth ? { otherParentId: person.relations.father } : undefined,
+            type: 'parentLabeled',
             style: { stroke: '#b1b1b7', strokeWidth: 2 },
             animated: false,
           });
@@ -1722,7 +1628,7 @@ function TreePageContent() {
       return scoreA - scoreB;
     });
     setEdges(defaultSortedEdges);
-  }, [project?.persons, project?.meta.defaultPerspectiveId, project?.meta.siblingOrder, setNodes, setEdges, getNodes, handleHoverStart, handleHoverEnd, treeDisplayMode, treeLayoutMode]);
+  }, [project?.persons, project?.meta.defaultPerspectiveId, project?.meta.siblingOrder, setNodes, setEdges, getNodes, handleHoverStart, handleHoverEnd, treeLayoutMode]);
 
   useEffect(() => {
     buildGraph();
