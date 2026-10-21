@@ -2223,10 +2223,12 @@ function TreePageContent() {
               <div>
                 <div className="perspective-picker-title">同辈排序</div>
                 <div className="perspective-picker-sub">
-                  <div>此功能适用于当同辈中某些人生卒信息缺失时使用，使用此功能后，按照年龄排序将会失效，因此还影响着称谓的计算。</div>
-                  <div>顶部序号 1 为最年长，下方为更年幼。</div>
-                  <div>点行尾的 ↑ / ↓ 调整长幼排行。</div>
-                  <div>修改排序后会立即生效并随档案保存，你也可以点击“系统重排”来恢复。</div>
+                  <ul className="perspective-picker-sub-list">
+                    <li>此功能适用于当同辈中某些人生卒信息缺失时使用，使用此功能后，按照年龄排序将会失效，因此还影响着称谓（如：兄/弟/姐/妹）的计算。</li>
+                    <li>顶部序号 1 为最年长，下方为更年幼。</li>
+                    <li>点行尾的 ↑ / ↓ 调整长幼排行。</li>
+                    <li>修改排序后会立即生效并随档案保存，你也可以点击“系统重排”来恢复。</li>
+                  </ul>
                 </div>
               </div>
               <button

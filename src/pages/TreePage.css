@@ -571,6 +571,17 @@
   line-height: 1.5;
 }
 
+.perspective-picker-sub-list {
+  margin: 4px 0 0 0;
+  padding-left: 14px;
+  list-style-type: disc;
+}
+
+.perspective-picker-sub-list li {
+  margin-top: 2px;
+  line-height: 1.5;
+}
+
 .perspective-picker-close {
   flex: none;
   width: 24px;
