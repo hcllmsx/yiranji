@@ -965,7 +965,7 @@ export default function SettingsPage() {
 
           <p className="form-hint" style={{ marginTop: '10px' }}>
             账号密码只保存在本机。坚果云要用「账户信息 → 安全选项 → 应用密码」生成的那串密码，不是登录密码。
-            两台电脑都开启同步后，日常只需点左侧「一键同步」，不必再来回导文件。
+            两台电脑都开启同步后，可在本页手动上传或拉取档案，也可按设置自动检查云端更新。
           </p>
 
           <div className="sync-restore">
