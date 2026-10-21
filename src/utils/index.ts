@@ -287,11 +287,19 @@ export function getAgeDescription(
  * 获取生卒年份简写
  */
 export function getLifeSpan(birthDateSolar?: string, deathDateSolar?: string, isAlive?: boolean): string {
-  if (!birthDateSolar) return '';
+  if (!birthDateSolar) {
+    if (!isAlive && deathDateSolar) {
+      return `？—${new Date(deathDateSolar).getFullYear()}`;
+    }
+    return '';
+  }
   const birthYear = new Date(birthDateSolar).getFullYear();
-  if (!isAlive && deathDateSolar) {
-    const deathYear = new Date(deathDateSolar).getFullYear();
-    return `${birthYear}—${deathYear}`;
+  if (!isAlive) {
+    if (deathDateSolar) {
+      const deathYear = new Date(deathDateSolar).getFullYear();
+      return `${birthYear}—${deathYear}`;
+    }
+    return `${birthYear}—？`;
   }
   return `${birthYear}—`;
 }

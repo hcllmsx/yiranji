@@ -134,6 +134,8 @@ export default function PersonEditPage() {
 
   // 出生日期未知：更早的祖宗往往没有确切出生日期，勾选后不保存任何出生日期
   const [birthUnknown, setBirthUnknown] = useState(false);
+  // 逝世日期未知：勾选后不保存逝世日期，仅记录已逝世
+  const [deathUnknown, setDeathUnknown] = useState(false);
 
   // 生日：公历状态 (数字)
   const [sBirthYear, setSBirthYear] = useState<number>(1990);
@@ -387,6 +389,8 @@ export default function PersonEditPage() {
 
       // 出生日期未知标记：历史数据本就没有出生日期，避免被默认年份污染
       setBirthUnknown(!existingPerson.birthDateSolar);
+      // 逝世日期未知标记：若已逝世但没有具体逝世日期
+      setDeathUnknown(existingPerson.isAlive === false && !existingPerson.deathDateSolar);
 
       // 回填公历生日数字
       if (existingPerson.birthDateSolar) {
@@ -421,6 +425,7 @@ export default function PersonEditPage() {
     } else {
       // 默认推算
       setBirthUnknown(false);
+      setDeathUnknown(false);
       handleSolarChange(1990, 1, 1);
     }
   }, [existingPerson, handleSolarChange]);
@@ -684,7 +689,7 @@ export default function PersonEditPage() {
     // 拼出公历逝世日期
     let deathDateSolar: string | undefined = undefined;
     let deathTimePrecision: 'date' | 'time' = 'date';
-    if (!isAlive) {
+    if (!isAlive && !deathUnknown) {
       const dYearStr = String(sDeathYear).padStart(4, '0');
       const dMonthStr = String(sDeathMonth).padStart(2, '0');
       const dDayStr = String(sDeathDay).padStart(2, '0');
@@ -1558,20 +1563,44 @@ export default function PersonEditPage() {
         </div>
 
         {/* 存活状态 */}
-        <div className="alive-toggle" style={{ margin: '16px 0' }}>
+        <div className="alive-toggle" style={{ margin: '16px 0', display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
             <input
               type="checkbox"
               checked={isAlive}
-              onChange={(e) => setIsAlive(e.target.checked)}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setIsAlive(checked);
+                if (checked) {
+                  setDeathUnknown(false);
+                }
+              }}
               style={{ width: '18px', height: '18px', accentColor: 'var(--color-accent)' }}
             />
             <span style={{ fontSize: '15px', fontWeight: '500' }}>在世</span>
           </label>
+
+          {!isAlive && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={deathUnknown}
+                onChange={(e) => setDeathUnknown(e.target.checked)}
+                style={{ width: '18px', height: '18px', accentColor: 'var(--color-accent)' }}
+              />
+              <span style={{ fontSize: '15px', fontWeight: '500' }}>逝世日期未知</span>
+            </label>
+          )}
         </div>
 
+        {!isAlive && deathUnknown && (
+          <div style={{ margin: '-8px 0 16px 0', fontSize: '13px', color: 'var(--color-text-tertiary)' }}>
+            已标记为已故，但具体逝世日期未知。勾选后将不保存逝世日期，家谱卡片将正常标记已故标识。
+          </div>
+        )}
+
         {/* 逝世日期公历选择 */}
-        {!isAlive && (
+        {!isAlive && !deathUnknown && (
           <div className="form-group">
             <label className="form-label">逝世日期（公历）</label>
             <div className="date-group" style={{ padding: '16px', background: 'var(--color-bg-input)', borderRadius: 'var(--radius-md)' }}>

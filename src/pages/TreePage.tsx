@@ -1981,15 +1981,17 @@ function TreePageContent() {
             }}
             title="切换主视角：所有称谓与关系路径都以所选成员为基准"
           >
-            🧭 主视角：{perspectiveLabel}
+            主视角：{perspectiveLabel}
           </button>
-          <button
-            className="btn btn-sm btn-secondary"
-            onClick={() => setSortPersonId(project?.meta.defaultPerspectiveId || persons[0]?.id || null)}
-            title="调整同辈兄弟姐妹的长幼顺序（出生日期未知时也能指定排行）"
-          >
-            ↔ 同辈排序
-          </button>
+          {treeLayoutMode === 'aligned' && (
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={() => setSortPersonId(project?.meta.defaultPerspectiveId || persons[0]?.id || null)}
+              title="调整同辈兄弟姐妹的长幼顺序（出生日期未知时也能指定排行）"
+            >
+              同辈排序
+            </button>
+          )}
           <button
             className={`btn btn-sm ${showCoordinates ? 'btn-primary' : 'btn-secondary'}`}
             style={{
@@ -2002,10 +2004,10 @@ function TreePageContent() {
             }}
             onClick={() => setShowCoordinates(!showCoordinates)}
           >
-            📐 {showCoordinates ? '隐藏坐标系' : '显示坐标系'}
+            {showCoordinates ? '隐藏坐标系' : '显示坐标系'}
           </button>
           <button className="btn btn-sm btn-secondary" onClick={() => navigate('/person/new/edit')}>
-            ➕ 添加人员
+            添加人员
           </button>
           <button
             className="btn btn-sm btn-secondary"
@@ -2024,7 +2026,7 @@ function TreePageContent() {
             }}
             title="把视图移动并缩放到主视角人物"
           >
-            🎯 定位主视角
+            定位主视角
           </button>
           <button
             className="btn btn-sm btn-secondary"
@@ -2036,7 +2038,7 @@ function TreePageContent() {
             }}
             title={`当前节点布局：${treeLayoutMode === 'classic' ? '经典模式（主脉居中、长幼错落）' : '同辈齐平（同高拉齐、从左到右）'}，点击切换`}
           >
-            📐 布局：{treeLayoutMode === 'classic' ? '经典模式' : '同辈齐平'}
+            布局：{treeLayoutMode === 'classic' ? '经典模式' : '同辈齐平'}
           </button>
           <button
             className="btn btn-sm btn-secondary"
@@ -2045,7 +2047,7 @@ function TreePageContent() {
               buildGraph();
             }}
           >
-            🔄 重置位置
+            重置位置
           </button>
           <div className="custom-layout-btn-wrapper">
             <button
@@ -2061,7 +2063,7 @@ function TreePageContent() {
               }}
               title="应用自定义拖拽后保存的卡片坐标布局"
             >
-              🎨 自定义布局
+              自定义布局
             </button>
             {hasCustomLayout && (
               <button
@@ -2201,9 +2203,9 @@ function TreePageContent() {
               <div>
                 <div className="perspective-picker-title">同辈排序</div>
                 <div className="perspective-picker-sub">
-                  左侧为年长、右侧为年幼，点行尾的 ← → 调整位置。
+                  顶部序号 1 为最年长，下方为更年幼。点行尾的 ↑ / ↓ 调整长幼排行。
                   即使出生日期未知也可以指定排行，修改立即生效并随档案保存；
-                  顺序会同时决定卡片位置与「兄/弟、姐/妹、伯/叔」等称呼。
+                  顺序会同时决定同辈排版与「兄/弟、姐/妹、伯/叔」等称呼。
                 </div>
               </div>
               <button
@@ -2257,17 +2259,17 @@ function TreePageContent() {
                             className="sort-move-btn"
                             disabled={index === 0}
                             onClick={() => moveInSiblingGroup(row.person.id, -1)}
-                            title="前移一位（更年长）"
+                            title="上移一位（更年长）"
                           >
-                            ←
+                            ↑
                           </button>
                           <button
                             className="sort-move-btn"
                             disabled={index === sortRows.length - 1}
                             onClick={() => moveInSiblingGroup(row.person.id, 1)}
-                            title="后移一位（更年幼）"
+                            title="下移一位（更年幼）"
                           >
-                            →
+                            ↓
                           </button>
                         </span>
                       </div>
