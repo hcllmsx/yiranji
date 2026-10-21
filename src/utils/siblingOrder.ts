@@ -60,6 +60,10 @@ export function areSiblings(a?: Person | null, b?: Person | null): boolean {
  * 跨组（堂表、无共同父母）时一律按出生日期。
  */
 export function compareSiblings(a: Person, b: Person, order?: SiblingOrderMap): number {
+  // 若两人都有明确出生日期，永远以客观年龄为准，绝不允许长幼颠倒
+  if (a.birthDateSolar && b.birthDateSolar) {
+    return compareByAge(a, b);
+  }
   if (order) {
     const oa = order[a.id];
     const ob = order[b.id];

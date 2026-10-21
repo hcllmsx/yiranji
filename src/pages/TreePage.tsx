@@ -1913,6 +1913,20 @@ function TreePageContent() {
     );
   };
 
+  // 判定当前主视角的同辈群体是否需要进行同辈长幼排序：
+  // 必须设定了主视角，且同辈兄弟姐妹人数 >= 2，且其中至少 1 人出生日期未知（缺失）
+  const perspectiveParentIds = perspectivePerson ? parentIdsOf(perspectivePerson) : [];
+  const perspectiveSiblingsGroup: Person[] = (() => {
+    if (!perspectivePerson || !project || !perspectiveParentIds.length) return [];
+    const pId = project.meta.defaultPerspectiveId;
+    return Object.values(project.persons).filter(
+      (p) => p.id === pId || parentIdsOf(p).some((pid) => perspectiveParentIds.includes(pid))
+    );
+  })();
+  const showSiblingSort =
+    perspectiveSiblingsGroup.length >= 2 &&
+    perspectiveSiblingsGroup.some((p) => !p.birthDateSolar);
+
   // 空状态
   if (persons.length === 0) {
     return (
@@ -2023,13 +2037,15 @@ function TreePageContent() {
           >
             布局：{treeLayoutMode === 'classic' ? '经典模式' : '同辈齐平'}
           </button>
-          <button
-            className="btn btn-sm btn-secondary"
-            onClick={() => setSortPersonId(project?.meta.defaultPerspectiveId || persons[0]?.id || null)}
-            title="调整同辈兄弟姐妹的长幼顺序（出生日期未知时也能指定排行）"
-          >
-            同辈排序
-          </button>
+          {showSiblingSort && (
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={() => setSortPersonId(project?.meta.defaultPerspectiveId || persons[0]?.id || null)}
+              title="调整同辈兄弟姐妹的长幼顺序（出生日期未知时也能指定排行）"
+            >
+              同辈排序
+            </button>
+          )}
           <div className="custom-layout-btn-wrapper">
             <button
               className="btn btn-sm btn-secondary"
@@ -2373,7 +2389,7 @@ function TreePageContent() {
                     ⭐ 设为主视角
                   </button>
                 )}
-                {canSortSiblings && (
+                {showSiblingSort && canSortSiblings && (
                   <button
                     className="context-menu-item"
                     onClick={() => {
