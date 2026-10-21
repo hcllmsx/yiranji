@@ -539,8 +539,9 @@ function TreePageContent() {
       };
     });
     saveCustomLayout(layout);
-    // 用户手动拖拽节点后，自动切回"自定义布局"视图模式
+    // 用户手动拖拽节点后，自动切回"自定义位置"视图模式
     useDefaultLayoutRef.current = false;
+    setIsDefaultLayoutView(false);
   }, [saveCustomLayout, getNodes]);
 
   const [showCoordinates, setShowCoordinates] = useState(false);
@@ -556,6 +557,11 @@ function TreePageContent() {
   const showCoordinatesRef = useRef(showCoordinates);
   // 视图模式：true=显示默认算法布局，false=应用自定义布局
   const useDefaultLayoutRef = useRef(false);
+  // 视图模式状态：是否正在查看默认算法布局（用于驱动单按钮文案翻转）
+  const [isDefaultLayoutView, setIsDefaultLayoutView] = useState(!hasCustomLayout);
+  useEffect(() => {
+    setIsDefaultLayoutView(!hasCustomLayout);
+  }, [currentProjectId]);
 
   // 家谱树亲子连线的显示模式（在"设置 → 家谱树显示"中切换）：
   // classic = 原版连线（每条亲子连线各画完整 smoothstep）；enhanced = 增强模式
@@ -566,6 +572,7 @@ function TreePageContent() {
     const onLayoutModeChange = () => {
       setTreeLayoutModeState(getTreeLayoutMode());
       useDefaultLayoutRef.current = true;
+      setIsDefaultLayoutView(true);
     };
     window.addEventListener(TREE_LAYOUT_MODE_EVENT, onLayoutModeChange);
     return () => window.removeEventListener(TREE_LAYOUT_MODE_EVENT, onLayoutModeChange);
@@ -2010,6 +2017,7 @@ function TreePageContent() {
               setTreeLayoutMode(nextMode);
               setTreeLayoutModeState(nextMode);
               useDefaultLayoutRef.current = true;
+              setIsDefaultLayoutView(true);
             }}
             title={`当前节点布局：${treeLayoutMode === 'classic' ? '经典模式（主脉居中、长幼错落）' : '同辈齐平（同高拉齐、从左到右）'}，点击切换`}
           >
@@ -2022,31 +2030,39 @@ function TreePageContent() {
           >
             同辈排序
           </button>
-          <button
-            className="btn btn-sm btn-secondary"
-            onClick={() => {
-              useDefaultLayoutRef.current = true;
-              buildGraph();
-            }}
-            title="重置所有卡片回到自动算法排布位置"
-          >
-            重置人员位置
-          </button>
           <div className="custom-layout-btn-wrapper">
             <button
               className="btn btn-sm btn-secondary"
               onClick={() => {
-                useDefaultLayoutRef.current = false;
-                buildGraph();
+                if (!hasCustomLayout) return;
+                if (isDefaultLayoutView) {
+                  useDefaultLayoutRef.current = false;
+                  setIsDefaultLayoutView(false);
+                  buildGraph();
+                } else {
+                  useDefaultLayoutRef.current = true;
+                  setIsDefaultLayoutView(true);
+                  buildGraph();
+                }
               }}
               disabled={!hasCustomLayout}
               style={{
                 opacity: hasCustomLayout ? 1 : 0.5,
                 cursor: hasCustomLayout ? 'pointer' : 'not-allowed',
               }}
-              title="应用自定义拖拽后保存的卡片坐标位置"
+              title={
+                !hasCustomLayout
+                  ? '当前已是默认位置，拖动任意卡片可自定义位置'
+                  : isDefaultLayoutView
+                  ? '点击应用之前拖拽保存的自定义位置'
+                  : '点击恢复为系统自动算法排布位置'
+              }
             >
-              自定义位置
+              {!hasCustomLayout
+                ? '重置人员位置'
+                : isDefaultLayoutView
+                ? '自定义位置'
+                : '重置人员位置'}
             </button>
             {hasCustomLayout && (
               <button
@@ -2060,6 +2076,7 @@ function TreePageContent() {
                     onConfirm: () => {
                       clearCustomLayout();
                       useDefaultLayoutRef.current = true;
+                      setIsDefaultLayoutView(true);
                       buildGraph();
                     },
                   });
@@ -2071,14 +2088,20 @@ function TreePageContent() {
             )}
           </div>
           <button
-            className={`btn btn-sm ${showCoordinates ? 'btn-primary' : 'btn-secondary'}`}
+            className="btn btn-sm btn-secondary"
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '4px',
+              justifyContent: 'center',
+              width: '94px',
               fontWeight: 500,
-              boxShadow: showCoordinates ? '0 0 10px oklch(60% 0.16 250 / 0.3)' : 'none',
-              transition: 'all 0.2s'
+              boxSizing: 'border-box',
+              border: '1.5px solid',
+              borderColor: showCoordinates ? 'var(--color-accent)' : 'var(--color-border)',
+              backgroundColor: showCoordinates ? 'var(--color-accent)' : 'transparent',
+              color: showCoordinates ? 'var(--color-text-inverse)' : 'var(--color-text-primary)',
+              boxShadow: showCoordinates ? '0 0 8px oklch(60% 0.16 250 / 0.25)' : 'none',
+              transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease'
             }}
             onClick={() => setShowCoordinates(!showCoordinates)}
           >
@@ -2303,6 +2326,16 @@ function TreePageContent() {
             const targetPerson = persons.find((p) => p.id === contextMenu.personId);
             const hasFather = !!targetPerson?.relations.father;
             const hasMother = !!targetPerson?.relations.mother;
+            const perspectiveId = project?.meta.defaultPerspectiveId;
+            const perspectivePerson = perspectiveId ? project?.persons[perspectiveId] : undefined;
+            const perspectiveParentIds = perspectivePerson ? parentIdsOf(perspectivePerson) : [];
+            const isPerspectiveSelf = contextMenu.personId === perspectiveId;
+            const isPerspectiveSibling =
+              !isPerspectiveSelf &&
+              perspectiveParentIds.length > 0 &&
+              targetPerson &&
+              parentIdsOf(targetPerson).some((pid) => perspectiveParentIds.includes(pid));
+            const canSortSiblings = isPerspectiveSelf || isPerspectiveSibling;
             return (
               <div
                 className="context-menu"
@@ -2326,16 +2359,15 @@ function TreePageContent() {
                     🧭 设为主视角
                   </button>
                 )}
-                {(targetPerson ? parentIdsOf(targetPerson).length > 0 : false) && (
+                {canSortSiblings && (
                   <button
                     className="context-menu-item"
                     onClick={() => {
-                      const targetId = contextMenu.personId;
                       setContextMenu(null);
-                      setSortPersonId(targetId);
+                      setSortPersonId(perspectiveId || contextMenu.personId);
                     }}
                   >
-                    ↔ 调整同辈顺序
+                    ↔ 同辈排序
                   </button>
                 )}
                 <div className="context-menu-divider" />
