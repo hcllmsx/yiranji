@@ -2224,10 +2224,10 @@ function TreePageContent() {
                 <div className="perspective-picker-title">同辈排序</div>
                 <div className="perspective-picker-sub">
                   <ul className="perspective-picker-sub-list">
-                    <li>此功能适用于当同辈中某些人生卒信息缺失时使用，使用此功能后，按照年龄排序将会失效，因此还影响着称谓（如：兄/弟/姐/妹）的计算。</li>
-                    <li>顶部序号 1 为最年长，下方为更年幼。</li>
-                    <li>点行尾的 ↑ / ↓ 调整长幼排行。</li>
-                    <li>修改排序后会立即生效并随档案保存，你也可以点击“系统重排”来恢复。</li>
+                    <li>出生日期已知的成员自动按年龄排序，不支持手动调整，避免产生称谓逻辑冲突。</li>
+                    <li>仅出生日期未知的成员可调整长幼排行，点行尾的 ↑ / ↓ 可将其移动至指定位次。</li>
+                    <li>顶部序号 1 为最年长，下方为更年幼。排序会决定家谱树上的左右排版与称谓（如：兄/弟/姐/妹）计算。</li>
+                    <li>修改排序后会立即生效并随档案保存，你也可以点击“系统重排”来恢复系统默认规则。</li>
                   </ul>
                 </div>
               </div>
@@ -2278,22 +2278,33 @@ function TreePageContent() {
                         </span>
                         <span className="perspective-picker-rel">{row.relation}</span>
                         <span className="sort-actions">
-                          <button
-                            className="sort-move-btn"
-                            disabled={index === 0}
-                            onClick={() => moveInSiblingGroup(row.person.id, -1)}
-                            title="上移一位（更年长）"
-                          >
-                            ↑
-                          </button>
-                          <button
-                            className="sort-move-btn"
-                            disabled={index === sortRows.length - 1}
-                            onClick={() => moveInSiblingGroup(row.person.id, 1)}
-                            title="下移一位（更年幼）"
-                          >
-                            ↓
-                          </button>
+                          {row.person.birthDateSolar ? (
+                            <span
+                              className="sort-info-icon"
+                              title="有出生日期不能手动排序"
+                            >
+                              ℹ
+                            </span>
+                          ) : (
+                            <>
+                              <button
+                                className="sort-move-btn"
+                                disabled={index === 0}
+                                onClick={() => moveInSiblingGroup(row.person.id, -1)}
+                                title="上移一位（更年长）"
+                              >
+                                ↑
+                              </button>
+                              <button
+                                className="sort-move-btn"
+                                disabled={index === sortRows.length - 1}
+                                onClick={() => moveInSiblingGroup(row.person.id, 1)}
+                                title="下移一位（更年幼）"
+                              >
+                                ↓
+                              </button>
+                            </>
+                          )}
                         </span>
                       </div>
                     );
