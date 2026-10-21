@@ -131,6 +131,8 @@ function PersonNode({ data }: { data: PersonNodeData }) {
     !isPerspectiveSelf && perspectiveId
       ? getRelationshipText(perspectiveId, person.id, personsMap, project?.meta.siblingOrder)
       : '';
+  const isGenericReciprocalRelation =
+    !isPerspectiveSelf && relationText === '家族成员' && reverseRelationText === '家族成员';
   const selfPronoun = person.gender === 'male' ? '他' : '她';
 
   // 使用 useReactFlow 更新自身节点坐标
@@ -240,6 +242,8 @@ function PersonNode({ data }: { data: PersonNodeData }) {
         <div className="tree-node-relation-badge">
           {isPerspectiveSelf ? (
             <span className="tree-node-relation-line">★ 当前主视角</span>
+          ) : isGenericReciprocalRelation ? (
+            <span className="tree-node-relation-line">家族成员</span>
           ) : (
             <>
               <span className="tree-node-relation-line">
@@ -556,12 +560,19 @@ function TreePageContent() {
   const handleHoverEnd = useCallback(() => setHoveredId(null), []);
   const showCoordinatesRef = useRef(showCoordinates);
   // 视图模式：true=显示默认算法布局，false=应用自定义布局
-  const useDefaultLayoutRef = useRef(false);
+  // 首次构建时与当前项目的布局状态保持一致：没有自定义坐标就使用算法布局，
+  // 有自定义坐标则恢复自定义布局。该 ref 同时作为一次性“强制算法重排”开关。
+  const useDefaultLayoutRef = useRef(!hasCustomLayout);
+  // 用户点击“自定义位置”时，明确要求从已保存的坐标恢复，而非沿用画布当前坐标。
+  const applySavedCustomLayoutRef = useRef(false);
   // 视图模式状态：是否正在查看默认算法布局（用于驱动单按钮文案翻转）
   const [isDefaultLayoutView, setIsDefaultLayoutView] = useState(!hasCustomLayout);
   useEffect(() => {
-    setIsDefaultLayoutView(!hasCustomLayout);
-  }, [currentProjectId]);
+    const shouldUseDefaultLayout = !hasCustomLayout;
+    useDefaultLayoutRef.current = shouldUseDefaultLayout;
+    applySavedCustomLayoutRef.current = false;
+    setIsDefaultLayoutView(shouldUseDefaultLayout);
+  }, [currentProjectId, hasCustomLayout]);
 
   // 家谱树亲子连线的显示模式（在"设置 → 家谱树显示"中切换）：
   // classic = 原版连线（每条亲子连线各画完整 smoothstep）；enhanced = 增强模式
@@ -1594,32 +1605,39 @@ function TreePageContent() {
     // ====== Bug 2 & 3 修复：保持已有节点位置，仅对新增节点使用算法布局 ======
     // 当不是用户明确点击"默认布局"按钮时，尝试保持已有节点的当前位置
     if (!useDefaultLayoutRef.current) {
-      // 优先从 ReactFlow 当前实时节点读取位置
-      const currentNodes = getNodes();
-      const currentPosMap = new Map<string, { x: number; y: number }>();
-      currentNodes.forEach(n => {
-        currentPosMap.set(n.id, { x: n.position.x, y: n.position.y });
-      });
+      const currentCustomLayout = useFamilyStore.getState().project?.customLayout;
+      const shouldApplySavedCustomLayout = applySavedCustomLayoutRef.current;
+      applySavedCustomLayoutRef.current = false;
 
-      // 如果当前有实时节点（非首次构建），用实时位置覆盖已有节点
-      if (currentNodes.length > 0) {
+      // 点击“自定义位置”时，从已保存快照恢复；其他重建保留画布实时位置。
+      if (shouldApplySavedCustomLayout && currentCustomLayout) {
         layouted.forEach((n) => {
-          const existingPos = currentPosMap.get(n.id);
-          if (existingPos) {
-            // 已有节点保持当前位置不变
-            n.position = { x: existingPos.x, y: existingPos.y };
-          }
-          // 新增节点使用算法计算的位置（已在上方计算好）
+          const pos = currentCustomLayout[n.id];
+          if (pos) n.position = { x: pos.x, y: pos.y };
         });
       } else {
-        // 首次构建，尝试从 customLayout 恢复
-        const currentCustomLayout = useFamilyStore.getState().project?.customLayout;
-        if (currentCustomLayout) {
+        // 优先从 ReactFlow 当前实时节点读取位置
+        const currentNodes = getNodes();
+        const currentPosMap = new Map<string, { x: number; y: number }>();
+        currentNodes.forEach(n => {
+          currentPosMap.set(n.id, { x: n.position.x, y: n.position.y });
+        });
+
+        // 如果当前有实时节点（非首次构建），用实时位置覆盖已有节点
+        if (currentNodes.length > 0) {
+          layouted.forEach((n) => {
+            const existingPos = currentPosMap.get(n.id);
+            if (existingPos) {
+              // 已有节点保持当前位置不变
+              n.position = { x: existingPos.x, y: existingPos.y };
+            }
+            // 新增节点使用算法计算的位置（已在上方计算好）
+          });
+        } else if (currentCustomLayout) {
+          // 首次构建，尝试从 customLayout 恢复
           layouted.forEach((n) => {
             const pos = currentCustomLayout[n.id];
-            if (pos) {
-              n.position = { x: pos.x, y: pos.y };
-            }
+            if (pos) n.position = { x: pos.x, y: pos.y };
           });
         }
       }
@@ -1812,6 +1830,9 @@ function TreePageContent() {
   const handleSwitchPerspective = useCallback(
     (personId: string) => {
       if (!personId) return;
+      // 主视角只影响称谓、高亮和画布定位；保留当前节点坐标，避免切换视角时
+      // 用新视角重新计算整棵树，导致用户看到树形结构跳动。
+      useDefaultLayoutRef.current = false;
       setDefaultPerspective(personId);
       setPerspectivePickerOpen(false);
       setPerspectiveQuery('');
@@ -1825,6 +1846,41 @@ function TreePageContent() {
     },
     [setDefaultPerspective, getNodes, setCenter]
   );
+
+  const focusPerspective = useCallback(() => {
+    const perspectiveId = project?.meta.defaultPerspectiveId;
+    const focusNode = getNodes().find((n) => n.id === perspectiveId);
+    if (focusNode) {
+      setCenter(focusNode.position.x, focusNode.position.y, {
+        zoom: ENTRY_FOCUS_ZOOM,
+        duration: 600,
+      });
+    } else {
+      fitView({ padding: 0.3 });
+    }
+  }, [project?.meta.defaultPerspectiveId, getNodes, setCenter, fitView]);
+
+  // 空格定位主视角。保留表单编辑、可聚焦控件和弹窗自身的空格键行为。
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' && event.key !== ' ') return;
+      if (event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest(
+        'input, textarea, select, button, a, [contenteditable="true"], [role="button"]'
+      )) return;
+      if (perspectivePickerOpen || sortPersonId || contextMenu || dialog) return;
+      if (document.querySelector('[role="dialog"], .perspective-picker-overlay, .custom-dialog-overlay')) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      focusPerspective();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [focusPerspective, perspectivePickerOpen, sortPersonId, contextMenu, dialog]);
 
   // 主视角展示名 + 切换面板的候选列表（支持按姓名或称谓搜索）
   const perspectivePerson = project?.meta.defaultPerspectiveId
@@ -2007,20 +2063,9 @@ function TreePageContent() {
           </button>
           <button
             className="btn btn-sm btn-secondary"
-            onClick={() => {
-              const perspectiveId = project?.meta.defaultPerspectiveId;
-              const focusNode = getNodes().find((n) => n.id === perspectiveId);
-              if (focusNode) {
-                setCenter(focusNode.position.x, focusNode.position.y, {
-                  zoom: ENTRY_FOCUS_ZOOM,
-                  duration: 600,
-                });
-              } else {
-                // 未设置主视角时退回全局视图
-                fitView({ padding: 0.3 });
-              }
-            }}
-            title="把视图移动并缩放到主视角人物"
+            onClick={focusPerspective}
+            title="把视图移动并缩放到主视角人物（快捷键：空格）"
+            aria-keyshortcuts="Space"
           >
             定位主视角
           </button>
@@ -2053,9 +2098,11 @@ function TreePageContent() {
                 if (!hasCustomLayout) return;
                 if (isDefaultLayoutView) {
                   useDefaultLayoutRef.current = false;
+                  applySavedCustomLayoutRef.current = true;
                   setIsDefaultLayoutView(false);
                   buildGraph();
                 } else {
+                  applySavedCustomLayoutRef.current = false;
                   useDefaultLayoutRef.current = true;
                   setIsDefaultLayoutView(true);
                   buildGraph();
@@ -2091,6 +2138,7 @@ function TreePageContent() {
                     message: '确认清除所有自定义位置信息？所有手动拖拽的节点位置将被清空。',
                     onConfirm: () => {
                       clearCustomLayout();
+                      applySavedCustomLayoutRef.current = false;
                       useDefaultLayoutRef.current = true;
                       setIsDefaultLayoutView(true);
                       buildGraph();

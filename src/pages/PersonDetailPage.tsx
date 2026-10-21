@@ -595,7 +595,7 @@ export default function PersonDetailPage() {
           <div className="info-grid">
             {person.gender && (
               <div className="info-item">
-                <div className="icon-box">{person.gender === 'male' ? '♂' : '♀'}</div>
+                <div className="icon-box">{person.gender === 'male' ? '♂️' : '♀️'}</div>
                 <div className="info-text-group">
                   <span className="info-label">性别</span>
                   <span className="info-value">{person.gender === 'male' ? '男' : '女'}</span>
@@ -604,7 +604,7 @@ export default function PersonDetailPage() {
             )}
             {person.birthDateSolar && (
               <div className="info-item">
-                <div className="icon-box">🐾</div>
+                <div className="icon-box">🐉</div>
                 <div className="info-text-group">
                   <span className="info-label">生肖</span>
                   <span className="info-value">{getZodiac(new Date(person.birthDateSolar).getFullYear())}</span>
@@ -625,7 +625,7 @@ export default function PersonDetailPage() {
             )}
             {person.birthDateSolar && (
               <div className="info-item info-item-full">
-                <div className="icon-box">☀️</div>
+                <div className="icon-box">🎇</div>
                 <div className="info-text-group">
                   <span className="info-label">出生日期</span>
                   <span className="info-value">
@@ -671,7 +671,7 @@ export default function PersonDetailPage() {
                 onClick={() => setDefaultPerspective(person.id)}
                 title="切换后，家谱树与所有称谓都以该成员为基准"
               >
-                <span>🧭</span> 设为主视角
+                <span>⭐</span> 设为主视角
               </button>
             )}
             <button

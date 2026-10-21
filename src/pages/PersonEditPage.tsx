@@ -41,6 +41,15 @@ function getLunarMonthLabel(m: number): string {
   return LUNAR_MONTH_NAMES[m] || `${m}`;
 }
 
+function AddressModeControls({ mode, setMode }: { mode: 'unknown' | 'regions' | 'custom'; setMode: (mode: 'unknown' | 'regions' | 'custom') => void }) {
+  return (
+    <div className="address-mode-controls">
+      <label><input type="checkbox" checked={mode === 'unknown'} onChange={(e) => setMode(e.target.checked ? 'unknown' : 'regions')} /> 地址未知</label>
+      <label><input type="checkbox" checked={mode === 'custom'} onChange={(e) => setMode(e.target.checked ? 'custom' : 'regions')} /> 自定义地址</label>
+    </div>
+  );
+}
+
 /**
  * 构造某农历年内的月份序列（含闰月）
  * 闰月紧跟被闰月份之后，因此数组下标才代表“月份先后”，不能直接用月号比较
@@ -64,6 +73,18 @@ const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'))
 
 // 中国行政区划数据类型（省 → 市 → 县区 → 乡镇街道）
 type ChinaRegions = Record<string, Record<string, Record<string, string[]>>>;
+
+const normalizeRegionLabel = (name: string) =>
+  name
+    .replace(/维吾尔族?|哈萨克族?|回族|满族|蒙古族|土家族|苗族|瑶族|壮族|侗族|彝族|藏族|羌族|傣族|景颇族|布依族|仡佬族|东乡族|保安族|裕固族|塔吉克族|柯尔克孜族|锡伯族|达斡尔族|鄂温克族|鄂伦春族|朝鲜族|俄罗斯族|纳西族|哈尼族|白族|黎族|畲族|高山族/g, '')
+    .replace(/特别行政区|自治区|自治州|自治县|自治旗|地区|盟|区|县|市|旗$/, '');
+
+const matchRegionLabel = (name: string, options: string[]) => {
+  if (options.includes(name)) return name;
+  const normalized = normalizeRegionLabel(name);
+  const matches = options.filter((option) => normalizeRegionLabel(option) === normalized);
+  return matches.length === 1 ? matches[0] : undefined;
+};
 
 export default function PersonEditPage() {
   const { id } = useParams<{ id: string }>();
@@ -94,12 +115,87 @@ export default function PersonEditPage() {
   const [placeArea, setPlaceArea] = useState('');
   const [placeTown, setPlaceTown] = useState('');
   const [placeDetail, setPlaceDetail] = useState('');
+  const [birthPlaceMode, setBirthPlaceMode] = useState<'unknown' | 'regions' | 'custom'>('regions');
+  const [birthPlaceCustom, setBirthPlaceCustom] = useState('');
   // 居住地拆分：省 / 市 / 县区 / 乡镇 / 详细地址
   const [residenceProvince, setResidenceProvince] = useState('');
   const [residenceCity, setResidenceCity] = useState('');
   const [residenceArea, setResidenceArea] = useState('');
   const [residenceTown, setResidenceTown] = useState('');
   const [residenceDetail, setResidenceDetail] = useState('');
+  const [residencePlaceMode, setResidencePlaceMode] = useState<'unknown' | 'regions' | 'custom'>('regions');
+  const [residencePlaceCustom, setResidencePlaceCustom] = useState('');
+  const addressRegionPresets = useMemo(() => {
+    const presets = new Map<string, { value: string; kind: 'regions' | 'custom'; province?: string; city?: string; area?: string; town?: string; address?: string }>();
+    Object.values(project?.persons || {}).forEach((person) => {
+      [[person.birthPlace, person.birthPlaceMode], [person.residencePlace, person.residencePlaceMode]].forEach(([rawAddress, rawMode]) => {
+        const address = rawAddress as string | undefined;
+        if (!address) return;
+        if (rawMode === 'custom') {
+          const value = address.trim();
+          if (value) presets.set(`custom:${value}`, { value, kind: 'custom', address: value });
+          return;
+        }
+        const [provinceInput = '', cityInput = '', areaInput = '', townInput = ''] = address.trim().split(/\s+/);
+        if (!provinceInput || provinceInput === '国外') return;
+
+        const province = matchRegionLabel(provinceInput, Object.keys(REGIONS));
+        if (!province) { const value = address.trim(); presets.set(`custom:${value}`, { value, kind: 'custom', address: value }); return; }
+
+        const cityOptions = Object.keys(REGIONS[province] || {});
+        const city = cityInput ? matchRegionLabel(cityInput, cityOptions) : '';
+        if (cityInput && !city) { const value = address.trim(); presets.set(`custom:${value}`, { value, kind: 'custom', address: value }); return; }
+
+        const areaOptions = city ? Object.keys(REGIONS[province]?.[city] || {}) : [];
+        const area = areaInput ? matchRegionLabel(areaInput, areaOptions) : '';
+        if (areaInput && !area) { const value = address.trim(); presets.set(`custom:${value}`, { value, kind: 'custom', address: value }); return; }
+
+        const townOptions = city && area ? REGIONS[province]?.[city]?.[area] || [] : [];
+        const town = townInput ? matchRegionLabel(townInput, townOptions) : '';
+        if (townInput && !town) { const value = address.trim(); presets.set(`custom:${value}`, { value, kind: 'custom', address: value }); return; }
+
+        const value = [province, city, area, town].filter(Boolean).join(' ');
+        if (!presets.has(`regions:${value}`)) presets.set(`regions:${value}`, { value, kind: 'regions', province, city, area, town });
+      });
+    });
+    return Array.from(presets.entries())
+      .map(([, preset]) => preset)
+      .sort((a, b) => a.value.localeCompare(b.value, 'zh-Hans-CN'));
+  }, [project?.persons, REGIONS]);
+
+  const applyAddressRegionPreset = (target: 'birth' | 'residence', value: string) => {
+    const preset = addressRegionPresets.find((item) => `${item.kind}:${item.value}` === value);
+    if (!preset) return;
+    if (target === 'birth') {
+      setBirthPlaceMode(preset.kind);
+      if (preset.kind === 'custom') setBirthPlaceCustom(preset.address || '');
+      else { setPlaceProvince(preset.province || ''); setPlaceCity(preset.city || ''); setPlaceArea(preset.area || ''); setPlaceTown(preset.town || ''); }
+    } else {
+      setResidencePlaceMode(preset.kind);
+      if (preset.kind === 'custom') setResidencePlaceCustom(preset.address || '');
+      else { setResidenceProvince(preset.province || ''); setResidenceCity(preset.city || ''); setResidenceArea(preset.area || ''); setResidenceTown(preset.town || ''); }
+    }
+  };
+
+  const syncBirthAddressToResidence = () => {
+    setResidencePlaceMode(birthPlaceMode);
+    setResidencePlaceCustom(birthPlaceCustom);
+    setResidenceProvince(placeProvince);
+    setResidenceCity(placeCity);
+    setResidenceArea(placeArea);
+    setResidenceTown(placeTown);
+    setResidenceDetail(placeDetail);
+  };
+
+  const syncResidenceAddressToBirth = () => {
+    setBirthPlaceMode(residencePlaceMode);
+    setBirthPlaceCustom(residencePlaceCustom);
+    setPlaceProvince(residenceProvince);
+    setPlaceCity(residenceCity);
+    setPlaceArea(residenceArea);
+    setPlaceTown(residenceTown);
+    setPlaceDetail(residenceDetail);
+  };
   const [bio, setBio] = useState('');
   const [avatar, setAvatar] = useState<string | undefined>();
   const [avatarRect, setAvatarRect] = useState<string | undefined>();
@@ -316,6 +412,8 @@ export default function PersonEditPage() {
       setIsAlive(existingPerson.isAlive);
       // 拆分出生地字符串到多级下拉框 + 详细地址
       const parts = (existingPerson.birthPlace || '').split(' ');
+      setBirthPlaceMode(existingPerson.birthPlaceMode || (existingPerson.birthPlace ? 'regions' : 'unknown'));
+      setBirthPlaceCustom(existingPerson.birthPlaceMode === 'custom' ? existingPerson.birthPlace || '' : '');
       setPlaceProvince(parts[0] || '');
       setPlaceCity(parts[1] || '');
       setPlaceArea(parts[2] || '');
@@ -323,6 +421,8 @@ export default function PersonEditPage() {
       setPlaceDetail(parts.slice(4).join(' ') || '');
       // 拆分居住地字符串到多级下拉框 + 详细地址
       const resParts = (existingPerson.residencePlace || '').split(' ');
+      setResidencePlaceMode(existingPerson.residencePlaceMode || (existingPerson.residencePlace ? 'regions' : 'unknown'));
+      setResidencePlaceCustom(existingPerson.residencePlaceMode === 'custom' ? existingPerson.residencePlace || '' : '');
       setResidenceProvince(resParts[0] || '');
       setResidenceCity(resParts[1] || '');
       setResidenceArea(resParts[2] || '');
@@ -827,8 +927,10 @@ export default function PersonEditPage() {
       deathDateSolar,
       deathTimePrecision,
       isAlive,
-      birthPlace: [placeProvince, placeCity, placeArea, placeTown, placeDetail].filter(Boolean).join(' ') || undefined,
-      residencePlace: [residenceProvince, residenceCity, residenceArea, residenceTown, residenceDetail].filter(Boolean).join(' ') || undefined,
+      birthPlace: birthPlaceMode === 'unknown' ? undefined : birthPlaceMode === 'custom' ? birthPlaceCustom.trim() || undefined : [placeProvince, placeCity, placeArea, placeTown, placeDetail].filter(Boolean).join(' ') || undefined,
+      birthPlaceMode,
+      residencePlace: residencePlaceMode === 'unknown' ? undefined : residencePlaceMode === 'custom' ? residencePlaceCustom.trim() || undefined : [residenceProvince, residenceCity, residenceArea, residenceTown, residenceDetail].filter(Boolean).join(' ') || undefined,
+      residencePlaceMode,
       bio: bio || undefined,
       avatar: finalAvatar,
       avatarRect: finalAvatarRect,
@@ -1249,9 +1351,9 @@ export default function PersonEditPage() {
         </div>
       </div>
 
-      {/* 基本信息 */}
+      {/* 个人信息 */}
       <div className="form-section">
-        <div className="form-section-title">基本信息</div>
+        <div className="form-section-title">个人信息</div>
 
         <div className="form-row">
           <div className="form-group">
@@ -1285,22 +1387,19 @@ export default function PersonEditPage() {
               className={`gender-option ${gender === 'male' ? 'selected' : ''}`}
               onClick={() => setGender('male')}
             >
-              ♂ 男
+              ♂️ 男
             </button>
             <button
               type="button"
               className={`gender-option ${gender === 'female' ? 'selected' : ''}`}
               onClick={() => setGender('female')}
             >
-              ♀ 女
+              ♀️ 女
             </button>
           </div>
         </div>
-      </div>
-
-      {/* 生卒信息级联下拉框选择 */}
-      <div className="form-section">
-        <div className="form-section-title">生卒信息</div>
+        <div className="form-subsection">
+          <div className="form-subsection-title">生卒信息</div>
 
         <div className="form-group">
           {/* 出生日期未知开关 */}
@@ -1687,9 +1786,41 @@ export default function PersonEditPage() {
           </div>
         )}
 
+        </div>
+
+        <div className="form-subsection address-subsection">
+          <div className="form-subsection-title">地址信息</div>
         <div className="form-group">
-          <label className="form-label">出生地</label>
-          <div className="form-row" style={{ flexWrap: 'wrap' }}>
+          <div className="address-field-heading">
+            <label className="form-label">出生地</label>
+            <div className="address-field-actions">
+              {addressRegionPresets.length > 0 && (
+                <select
+                  className="form-input address-region-select"
+                  value=""
+                  onChange={(e) => applyAddressRegionPreset('birth', e.target.value)}
+                  title="仅套用省、市、县区、乡镇，详细地址保持不变"
+                >
+                  <option value="">复用已填地区</option>
+                  <option disabled>──────</option>
+                  {addressRegionPresets.map((preset) => (
+                    <option key={`${preset.kind}:${preset.value}`} value={`${preset.kind}:${preset.value}`}>{preset.value}</option>
+                  ))}
+                </select>
+              )}
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary address-sync-button"
+                onClick={syncResidenceAddressToBirth}
+                disabled={residencePlaceMode === 'unknown' || (residencePlaceMode === 'custom' ? !residencePlaceCustom.trim() : !residenceProvince && !residenceCity && !residenceArea && !residenceTown && !residenceDetail)}
+                title="将居住地址的行政区划和详细地址同步到出生地"
+              >
+                同步居住地址
+              </button>
+            </div>
+          </div>
+          <AddressModeControls mode={birthPlaceMode} setMode={setBirthPlaceMode} />
+          {birthPlaceMode === 'custom' ? <input className="form-input" value={birthPlaceCustom} onChange={(e) => setBirthPlaceCustom(e.target.value)} placeholder="完整地址" /> : birthPlaceMode === 'regions' && <div className="form-row" style={{ flexWrap: 'wrap' }}>
             <select
               className="form-input"
               value={placeProvince}
@@ -1781,12 +1912,40 @@ export default function PersonEditPage() {
                 />
               </>
             )}
-          </div>
+          </div>}
         </div>
 
         <div className="form-group">
-          <label className="form-label">居住地</label>
-          <div className="form-row" style={{ flexWrap: 'wrap' }}>
+          <div className="address-field-heading">
+            <label className="form-label">居住地</label>
+            <div className="address-field-actions">
+              {addressRegionPresets.length > 0 && (
+                <select
+                  className="form-input address-region-select"
+                  value=""
+                  onChange={(e) => applyAddressRegionPreset('residence', e.target.value)}
+                  title="仅套用省、市、县区、乡镇，详细地址保持不变"
+                >
+                  <option value="">复用已填地区</option>
+                  <option disabled>──────</option>
+                  {addressRegionPresets.map((preset) => (
+                    <option key={`${preset.kind}:${preset.value}`} value={`${preset.kind}:${preset.value}`}>{preset.value}</option>
+                  ))}
+                </select>
+              )}
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary address-sync-button"
+                onClick={syncBirthAddressToResidence}
+                disabled={birthPlaceMode === 'unknown' || (birthPlaceMode === 'custom' ? !birthPlaceCustom.trim() : !placeProvince && !placeCity && !placeArea && !placeTown && !placeDetail)}
+                title="将出生地址的行政区划和详细地址同步到居住地"
+              >
+                同步出生地址
+              </button>
+            </div>
+          </div>
+          <AddressModeControls mode={residencePlaceMode} setMode={setResidencePlaceMode} />
+          {residencePlaceMode === 'custom' ? <input className="form-input" value={residencePlaceCustom} onChange={(e) => setResidencePlaceCustom(e.target.value)} placeholder="完整地址" /> : residencePlaceMode === 'regions' && <div className="form-row" style={{ flexWrap: 'wrap' }}>
             <select
               className="form-input"
               value={residenceProvince}
@@ -1878,7 +2037,8 @@ export default function PersonEditPage() {
                 />
               </>
             )}
-          </div>
+          </div>}
+        </div>
         </div>
       </div>
 

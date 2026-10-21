@@ -102,6 +102,8 @@ export interface Person {
   isAlive: boolean;
   birthPlace?: string;
   residencePlace?: string;     // 居住地
+  birthPlaceMode?: 'unknown' | 'regions' | 'custom';
+  residencePlaceMode?: 'unknown' | 'regions' | 'custom';
   bio?: string;               // 个人简介
 
   // 头像

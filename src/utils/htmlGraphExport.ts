@@ -401,19 +401,24 @@ export async function buildGraphHtml(
       const targetTitle = perspectiveId
         ? getRelationshipText(box.person.id, perspectiveId, persons, project.meta.siblingOrder)
         : '';
-      // 双向称谓：我叫他什么 / 他叫我什么
-      const rel =
-        targetTitle && !isSelf
-          ? `我叫${box.person.gender === 'male' ? '他' : '她'}：${targetTitle}`
-          : isSelf
-            ? '★ 当前主视角'
-            : '';
       const backTitle =
         perspectiveId && !isSelf
           ? getRelationshipText(perspectiveId, box.person.id, persons, project.meta.siblingOrder)
           : '';
+      const isGenericReciprocalRelation =
+        !isSelf && targetTitle === '家族成员' && backTitle === '家族成员';
+      // 双向称谓相同时只显示一次通用关系，避免重复提示。
+      const rel = isGenericReciprocalRelation
+        ? '家族成员'
+        : targetTitle && !isSelf
+          ? `我叫${box.person.gender === 'male' ? '他' : '她'}：${targetTitle}`
+          : isSelf
+            ? '★ 当前主视角'
+            : '';
       const relBack = backTitle
-        ? `${persons[perspectiveId!]?.gender === 'male' ? '他' : '她'}叫我：${backTitle}`
+        ? isGenericReciprocalRelation
+          ? ''
+          : `${persons[perspectiveId!]?.gender === 'male' ? '他' : '她'}叫我：${backTitle}`
         : '';
       const html = renderCard(
         box.person,
@@ -956,8 +961,15 @@ ${badgeHtml}
         card.setAttribute('data-rel', '★ 当前主视角');
         card.setAttribute('data-rel-back', '');
       } else {
-        card.setAttribute('data-rel', '我叫' + letterOf(j) + '：' + relOf(idx, j));
-        card.setAttribute('data-rel-back', letterOf(idx) + '叫我：' + relOf(j, idx));
+        var targetTitle = relOf(idx, j);
+        var backTitle = relOf(j, idx);
+        if (targetTitle === '家族成员' && backTitle === '家族成员') {
+          card.setAttribute('data-rel', '家族成员');
+          card.setAttribute('data-rel-back', '');
+        } else {
+          card.setAttribute('data-rel', '我叫' + letterOf(j) + '：' + targetTitle);
+          card.setAttribute('data-rel-back', letterOf(idx) + '叫我：' + backTitle);
+        }
       }
     });
     tip.classList.remove('show');

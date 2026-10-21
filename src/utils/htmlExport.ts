@@ -103,7 +103,7 @@ function renderTag(
   const name = escapeHtml(displayName(person, context.anonymized, context.anonymizedNames));
   const life = escapeHtml(lifeText(person));
   const mark = isSpouse ? '<span class="sp-mark">♡</span>' : '';
-  const sex = `<span class="sex">${person.gender === 'male' ? '♂' : '♀'}</span>`;
+  const sex = `<span class="sex">${person.gender === 'male' ? '♂️' : '♀️'}</span>`;
   const lifeSpan = life ? `<span class="life">${life}</span>` : '';
   return `<span class="tag tag-${tone}" title="${name}">${mark}${sex}<span class="who">${name}</span>${lifeSpan}</span>`;
 }
