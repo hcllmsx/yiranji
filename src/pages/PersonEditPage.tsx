@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useFamilyStore } from '../store/familyStore';
 import { v4 as uuidv4 } from 'uuid';
@@ -10,6 +10,7 @@ import {
   getFullName,
   getLunarLeapMonth,
   getSiblingRank,
+  formatAge,
 } from '../utils';
 import { Lunar } from 'lunar-javascript';
 import { isTauri, convertLocalSrc, saveMediaFile, deleteMediaFile } from '../utils/tauri';
@@ -85,6 +86,73 @@ const matchRegionLabel = (name: string, options: string[]) => {
   const matches = options.filter((option) => normalizeRegionLabel(option) === normalized);
   return matches.length === 1 ? matches[0] : undefined;
 };
+
+function getPersonOptionLabel(person: Person): string {
+  const name = getFullName(person.surname, person.givenName);
+  const genderLabel = person.gender === 'male' ? '男' : '女';
+  const birth = person.birthDateSolar;
+  const reference = person.isAlive ? undefined : person.deathDateSolar;
+  if (!birth || (!person.isAlive && !reference)) return `${name}（${genderLabel}）`;
+
+  const birthDate = new Date(birth);
+  const referenceDate = reference ? new Date(reference) : new Date();
+  if (Number.isNaN(birthDate.getTime()) || Number.isNaN(referenceDate.getTime()) || referenceDate < birthDate) {
+    return `${name}（${genderLabel}）`;
+  }
+  const age = formatAge(birth, reference);
+  return age ? `${name}（${genderLabel}，${person.isAlive ? '' : '享年'}${age}）` : `${name}（${genderLabel}）`;
+}
+
+function RelationPersonSelect({
+  value,
+  people,
+  placeholder,
+  onChange,
+  style,
+}: {
+  value: string;
+  people: Person[];
+  placeholder: string;
+  onChange: (personId: string) => void;
+  style?: React.CSSProperties;
+}) {
+  const [showDetails, setShowDetails] = useState(false);
+  const selected = people.find((person) => person.id === value);
+  return (
+    <div className="relation-person-select-wrap" style={style}>
+      <select
+        className="relation-select-dynamic relation-person-select"
+        value={value}
+        onChange={(event) => { onChange(event.target.value); setShowDetails(false); }}
+        onFocus={() => setShowDetails(true)}
+        onBlur={() => setShowDetails(false)}
+        aria-label={placeholder}
+      >
+        <option value="">{placeholder}</option>
+        {people.map((person) => <option key={person.id} value={person.id}>{getPersonOptionLabel(person)}</option>)}
+      </select>
+      {!showDetails && (
+        <span className="relation-person-select-current" aria-hidden="true">
+          {selected ? getFullName(selected.surname, selected.givenName) : placeholder}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function getAgeAtDate(birthValue?: string, referenceValue?: string): number | undefined {
+  if (!birthValue || !referenceValue) return undefined;
+  const birth = new Date(birthValue);
+  const reference = new Date(referenceValue);
+  if (Number.isNaN(birth.getTime()) || Number.isNaN(reference.getTime()) || reference < birth) return undefined;
+  let age = reference.getFullYear() - birth.getFullYear();
+  if (reference.getMonth() < birth.getMonth() || (reference.getMonth() === birth.getMonth() && reference.getDate() < birth.getDate())) age--;
+  return age;
+}
+
+function getBirthYearGap(firstBirth?: string, secondBirth?: string): number | undefined {
+  return getAgeAtDate(firstBirth, secondBirth) ?? getAgeAtDate(secondBirth, firstBirth);
+}
 
 export default function PersonEditPage() {
   const { id } = useParams<{ id: string }>();
@@ -639,6 +707,55 @@ export default function PersonEditPage() {
 
   // 保存数据
   const handleSave = async () => {
+    const warnings: string[] = [];
+    const todayDate = new Date();
+    const today = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
+    const draftBirthDate = birthUnknown ? undefined : `${String(sBirthYear).padStart(4, '0')}-${String(sBirthMonth).padStart(2, '0')}-${String(sBirthDay).padStart(2, '0')}`;
+    const draftEndDate = isAlive || deathUnknown ? undefined : `${String(sDeathYear).padStart(4, '0')}-${String(sDeathMonth).padStart(2, '0')}-${String(sDeathDay).padStart(2, '0')}`;
+    const selfAge = getAgeAtDate(draftBirthDate, isAlive ? today : draftEndDate);
+
+    spouseEntries.forEach((entry) => {
+      if (existingPerson?.relations.spouses.some((spouse) => spouse.id === entry.id)) return;
+      const partner = project?.persons[entry.id];
+      if (!partner) return;
+      const partnerAge = getAgeAtDate(partner.birthDateSolar, partner.isAlive ? today : partner.deathDateSolar);
+      const ageGap = getBirthYearGap(draftBirthDate, partner.birthDateSolar);
+      if ((selfAge !== undefined && selfAge < 18) || (partnerAge !== undefined && partnerAge < 18) || (ageGap !== undefined && ageGap >= 40)) {
+        warnings.push(`配偶「${getFullName(partner.surname, partner.givenName)}」与本人年龄差异较大或涉及未成年人`);
+      }
+    });
+
+    const checkParentAge = (parentId: string, childBirthDate?: string) => {
+      const parent = project?.persons[parentId];
+      if (!parent?.birthDateSolar || !childBirthDate) return;
+      if (new Date(parent.birthDateSolar) > new Date(childBirthDate)) {
+        warnings.push(`亲子关系「${getFullName(parent.surname, parent.givenName)}」的出生日期晚于本人`);
+        return;
+      }
+      const ageAtChildBirth = getAgeAtDate(parent.birthDateSolar, childBirthDate);
+      if (ageAtChildBirth !== undefined && ageAtChildBirth < 12) {
+        warnings.push(`亲子关系「${getFullName(parent.surname, parent.givenName)}」与本人出生日期相差不足 12 年`);
+      }
+    };
+    if (draftBirthDate) {
+      if (fatherId && fatherId !== existingPerson?.relations.father) checkParentAge(fatherId, draftBirthDate);
+      if (motherId && motherId !== existingPerson?.relations.mother) checkParentAge(motherId, draftBirthDate);
+    }
+    childEntries.filter((entry) => entry.id && entry.type === 'biological').forEach((entry) => {
+      if (existingPerson?.relations.children.some((child) => child.id === entry.id)) return;
+      const child = project?.persons[entry.id];
+      if (!child?.birthDateSolar || !draftBirthDate) return;
+      if (new Date(child.birthDateSolar) < new Date(draftBirthDate)) {
+        warnings.push(`子女「${getFullName(child.surname, child.givenName)}」的出生日期早于本人`);
+        return;
+      }
+      const parentAgeAtChildBirth = getAgeAtDate(draftBirthDate, child.birthDateSolar);
+      if (parentAgeAtChildBirth !== undefined && parentAgeAtChildBirth < 12) {
+        warnings.push(`子女「${getFullName(child.surname, child.givenName)}」与本人出生日期相差不足 12 年`);
+      }
+    });
+
+    if (warnings.length > 0 && !window.confirm(`关系信息可能需要核对：\n\n${Array.from(new Set(warnings)).join('；\n')}。\n\n仍要保存吗？`)) return;
     await doSave();
   };
 
@@ -1088,6 +1205,22 @@ export default function PersonEditPage() {
     : null;
 
   const [showRelationMenu, setShowRelationMenu] = useState<boolean>(false);
+  const relationMenuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!showRelationMenu) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!relationMenuRef.current?.contains(event.target as Node)) setShowRelationMenu(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowRelationMenu(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [showRelationMenu]);
 
   // 第一人默认视角确认对话框
   const isFirstPerson = isNew && Object.keys(project?.persons || {}).length === 0;
@@ -1148,6 +1281,65 @@ export default function PersonEditPage() {
   };
 
   const availablePersons = allPersons.filter((p) => p.id !== id);
+
+  const currentPersonId = id && id !== 'new' ? id : undefined;
+  const ancestorIds = new Set<string>();
+  if (currentPersonId) {
+    const pending = [currentPersonId];
+    while (pending.length) {
+      const personId = pending.pop()!;
+      const person = project?.persons[personId];
+      if (!person) continue;
+      const parents = [
+        person.relations.father,
+        person.relations.mother,
+        ...getAdoptiveFathers(person.relations),
+        ...getAdoptiveMothers(person.relations),
+      ].filter((parentId): parentId is string => Boolean(parentId));
+      parents.forEach((parentId) => {
+        if (!ancestorIds.has(parentId)) {
+          ancestorIds.add(parentId);
+          pending.push(parentId);
+        }
+      });
+    }
+  }
+
+  const descendantIds = new Set<string>();
+  if (currentPersonId) {
+    const pending = [currentPersonId];
+    while (pending.length) {
+      const personId = pending.pop()!;
+      allPersons.forEach((person) => {
+        const parents = [
+          person.relations.father,
+          person.relations.mother,
+          ...getAdoptiveFathers(person.relations),
+          ...getAdoptiveMothers(person.relations),
+        ];
+        const isChildByParentLink = parents.includes(personId);
+        const isChildByChildLink = project?.persons[personId]?.relations.children?.some((child) => child.id === person.id) || false;
+        if ((isChildByParentLink || isChildByChildLink) && !descendantIds.has(person.id)) {
+          descendantIds.add(person.id);
+          pending.push(person.id);
+        }
+      });
+    }
+  }
+
+  const getRelationCandidates = (role: 'father' | 'mother' | 'adoptiveFather' | 'adoptiveMother' | 'spouse' | 'child' | 'sibling', excludedIds: string[] = []) =>
+    availablePersons.filter((person) => {
+      if (excludedIds.includes(person.id)) return false;
+      if ((role === 'father' || role === 'adoptiveFather') && person.gender !== 'male') return false;
+      if ((role === 'mother' || role === 'adoptiveMother') && person.gender !== 'female') return false;
+      const selectedParents = [fatherId, motherId, ...adoptiveFatherIds, ...adoptiveMotherIds].filter(Boolean);
+      const selectedChildren = childEntries.map((entry) => entry.id).filter(Boolean);
+      if ((role === 'father' || role === 'mother' || role === 'adoptiveFather' || role === 'adoptiveMother') && (descendantIds.has(person.id) || selectedChildren.includes(person.id))) return false;
+      if (role === 'child' && (ancestorIds.has(person.id) || selectedParents.includes(person.id))) return false;
+      if (role === 'sibling' && (ancestorIds.has(person.id) || descendantIds.has(person.id) || selectedParents.includes(person.id) || selectedChildren.includes(person.id))) return false;
+      if (role === 'spouse' && (ancestorIds.has(person.id) || descendantIds.has(person.id))) return false;
+      return true;
+    });
 
   // ==================== 选项集生成 ====================
 
@@ -2049,24 +2241,14 @@ export default function PersonEditPage() {
           
           {/* 直系生父母 */}
           <div className="relation-group-title">生父母</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px' }}>
             <div className="relation-item-dynamic">
               <span className="relation-label-dynamic">父亲</span>
-              <select className="relation-select-dynamic" value={fatherId} onChange={(e) => setFatherId(e.target.value)}>
-                <option value="">未设置</option>
-                {availablePersons.filter((p) => p.gender === 'male').map((p) => (
-                  <option key={p.id} value={p.id}>{getFullName(p.surname, p.givenName)}</option>
-                ))}
-              </select>
+              <RelationPersonSelect value={fatherId} placeholder="未设置" people={getRelationCandidates('father', [motherId, ...adoptiveFatherIds])} onChange={setFatherId} />
             </div>
             <div className="relation-item-dynamic">
               <span className="relation-label-dynamic">母亲</span>
-              <select className="relation-select-dynamic" value={motherId} onChange={(e) => setMotherId(e.target.value)}>
-                <option value="">未设置</option>
-                {availablePersons.filter((p) => p.gender === 'female').map((p) => (
-                  <option key={p.id} value={p.id}>{getFullName(p.surname, p.givenName)}</option>
-                ))}
-              </select>
+              <RelationPersonSelect value={motherId} placeholder="未设置" people={getRelationCandidates('mother', [fatherId, ...adoptiveMotherIds])} onChange={setMotherId} />
             </div>
           </div>
 
@@ -2074,25 +2256,20 @@ export default function PersonEditPage() {
           {(adoptiveFatherIds.length > 0 || adoptiveMotherIds.length > 0) && (
             <>
               <div className="relation-group-title">养父母</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div className="adoptive-parents-grid">
                   {adoptiveFatherIds.map((afId, index) => (
                     <div key={`af-${index}`} className="relation-item-dynamic">
                       <span className="relation-label-dynamic">养父</span>
-                      <select
-                        className="relation-select-dynamic"
+                      <RelationPersonSelect
                         value={afId}
-                        onChange={(e) => {
+                        placeholder="未设置"
+                        people={getRelationCandidates('adoptiveFather', [fatherId, ...adoptiveFatherIds.filter((_, i) => i !== index)])}
+                        onChange={(value) => {
                           const newIds = [...adoptiveFatherIds];
-                          newIds[index] = e.target.value;
+                          newIds[index] = value;
                           setAdoptiveFatherIds(newIds);
                         }}
-                      >
-                        <option value="">未设置</option>
-                        {availablePersons.filter((p) => p.gender === 'male').map((p) => (
-                          <option key={p.id} value={p.id}>{getFullName(p.surname, p.givenName)}</option>
-                        ))}
-                      </select>
+                      />
                       <button
                         type="button"
                         className="relation-delete-btn"
@@ -2105,25 +2282,19 @@ export default function PersonEditPage() {
                       </button>
                     </div>
                   ))}
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {adoptiveMotherIds.map((amId, index) => (
                     <div key={`am-${index}`} className="relation-item-dynamic">
                       <span className="relation-label-dynamic">养母</span>
-                      <select
-                        className="relation-select-dynamic"
+                      <RelationPersonSelect
                         value={amId}
-                        onChange={(e) => {
+                        placeholder="未设置"
+                        people={getRelationCandidates('adoptiveMother', [motherId, ...adoptiveMotherIds.filter((_, i) => i !== index)])}
+                        onChange={(value) => {
                           const newIds = [...adoptiveMotherIds];
-                          newIds[index] = e.target.value;
+                          newIds[index] = value;
                           setAdoptiveMotherIds(newIds);
                         }}
-                      >
-                        <option value="">未设置</option>
-                        {availablePersons.filter((p) => p.gender === 'female').map((p) => (
-                          <option key={p.id} value={p.id}>{getFullName(p.surname, p.givenName)}</option>
-                        ))}
-                      </select>
+                      />
                       <button
                         type="button"
                         className="relation-delete-btn"
@@ -2136,7 +2307,6 @@ export default function PersonEditPage() {
                       </button>
                     </div>
                   ))}
-                </div>
               </div>
             </>
           )}
@@ -2148,25 +2318,21 @@ export default function PersonEditPage() {
               暂未关联配偶，点击下方按钮可动态添加。
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px', marginBottom: '12px' }}>
               {spouseEntries.map((entry, index) => (
                 <div key={`spouse-${index}`} className="relation-item-dynamic" style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                   <span className="relation-label-dynamic" style={{ minWidth: '40px' }}>配偶</span>
-                  <select
-                    className="relation-select-dynamic"
+                  <RelationPersonSelect
                     style={{ flex: 2 }}
                     value={entry.id}
-                    onChange={(e) => {
+                    placeholder="选择人员..."
+                    people={getRelationCandidates('spouse', spouseEntries.filter((_, i) => i !== index).map((item) => item.id))}
+                    onChange={(value) => {
                       const newEntries = [...spouseEntries];
-                      newEntries[index] = { ...newEntries[index], id: e.target.value };
+                      newEntries[index] = { ...newEntries[index], id: value };
                       setSpouseEntries(newEntries);
                     }}
-                  >
-                    <option value="">选择人员...</option>
-                    {availablePersons.map((p) => (
-                      <option key={p.id} value={p.id}>{getFullName(p.surname, p.givenName)}</option>
-                    ))}
-                  </select>
+                  />
                   <select
                     className="relation-select-dynamic"
                     style={{ flex: 1, minWidth: '80px' }}
@@ -2203,25 +2369,21 @@ export default function PersonEditPage() {
               暂未关联子女，点击下方按钮可动态添加。
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px', marginBottom: '12px' }}>
               {childEntries.map((entry, index) => (
                 <div key={`child-${index}`} className="relation-item-dynamic" style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                   <span className="relation-label-dynamic" style={{ minWidth: '40px' }}>子女</span>
-                  <select
-                    className="relation-select-dynamic"
+                  <RelationPersonSelect
                     style={{ flex: 2 }}
                     value={entry.id}
-                    onChange={(e) => {
+                    placeholder="选择人员..."
+                    people={getRelationCandidates('child', childEntries.filter((_, i) => i !== index).map((item) => item.id))}
+                    onChange={(value) => {
                       const newEntries = [...childEntries];
-                      newEntries[index] = { ...newEntries[index], id: e.target.value };
+                      newEntries[index] = { ...newEntries[index], id: value };
                       setChildEntries(newEntries);
                     }}
-                  >
-                    <option value="">选择人员...</option>
-                    {availablePersons.map((p) => (
-                      <option key={p.id} value={p.id}>{getFullName(p.surname, p.givenName)}</option>
-                    ))}
-                  </select>
+                  />
                   <select
                     className="relation-select-dynamic"
                     style={{ flex: 1, minWidth: '80px' }}
@@ -2258,7 +2420,7 @@ export default function PersonEditPage() {
               暂未关联兄弟姐妹，点击下方按钮可动态添加。
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px', marginBottom: '12px' }}>
               {siblingIds.map((sibId, index) => {
                 const tempPersons = getTempPersons();
                 const currentPersonId = id && id !== 'new' ? id : 'temp-new-id';
@@ -2266,22 +2428,16 @@ export default function PersonEditPage() {
                 return (
                   <div key={index} className="relation-item-dynamic">
                     <span className="relation-label-dynamic">手足</span>
-                    <select
-                      className="relation-select-dynamic"
+                    <RelationPersonSelect
                       value={sibId}
-                      onChange={(e) => {
+                      placeholder="请选择人员..."
+                      people={getRelationCandidates('sibling', siblingIds.filter((_, i) => i !== index))}
+                      onChange={(value) => {
                         const newSibs = [...siblingIds];
-                        newSibs[index] = e.target.value;
+                        newSibs[index] = value;
                         setSiblingIds(newSibs);
                       }}
-                    >
-                      <option value="">请选择人员...</option>
-                      {availablePersons.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {getFullName(p.surname, p.givenName)}
-                        </option>
-                      ))}
-                    </select>
+                    />
                     {rankText && (
                       <span className="relation-rank-badge">{rankText}</span>
                     )}
@@ -2303,7 +2459,7 @@ export default function PersonEditPage() {
           )}
 
           {/* 增加关系按钮操作区 */}
-          <div className="relation-add-wrapper">
+          <div className="relation-add-wrapper" ref={relationMenuRef}>
             <button
               type="button"
               className="relation-add-btn"
