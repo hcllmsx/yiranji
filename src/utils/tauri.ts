@@ -122,33 +122,6 @@ export async function resolveWorkspaceDir(path: string): Promise<string> {
 }
 
 /**
- * 弹出原生打开文件对话框，选择要导入的工程数据（.json / .yrj）
- */
-export async function selectImportFile(): Promise<string | null> {
-  const api = await getTauriApi();
-  if (!api) return null;
-  return api.invoke<string | null>('select_import_file');
-}
-
-/**
- * 读取任意文本文件内容
- */
-export async function readTextFile(path: string): Promise<string> {
-  const api = await getTauriApi();
-  if (!api) throw new Error('未运行在 Tauri 环境中');
-  return api.invoke<string>('read_text_file', { path });
-}
-
-/**
- * 默认导入目录（未设置默认保存位置时回落到系统「文档」目录）
- */
-export async function defaultImportDir(): Promise<string> {
-  const api = await getTauriApi();
-  if (!api) throw new Error('未运行在 Tauri 环境中');
-  return api.invoke<string>('default_import_dir');
-}
-
-/**
  * 将明文项目 JSON 保存至工作区的 project.json
  */
 export async function saveProjectJson(workspacePath: string, jsonContent: string): Promise<void> {

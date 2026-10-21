@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useFamilyStore } from '../store/familyStore';
 import { openDevtools, isTauri, selectFilePathForSaveZip, writeBinaryFile, getAppLogs, openUrl, selectProjectParentDir, moveProjectWorkspace, openInExplorer, webdavTest, webdavRemoteMeta, webdavListProjects, type RemoteSyncMeta, type RemoteProject } from '../utils/tauri';
 import { getDefaultSaveDir, setDefaultSaveDir, getTreeDisplayMode, setTreeDisplayMode, type TreeDisplayMode, getTreeLayoutMode, setTreeLayoutMode, type TreeLayoutMode } from '../utils/appPrefs';
-import { exportProjectFile, countEmbeddedMedia, safeFolderName } from '../utils/projectPortable';
 import {
   getSyncSettings,
   saveSyncSettings,
@@ -34,7 +33,6 @@ export default function SettingsPage() {
   // 档案存储：新建档案的默认保存位置（全局偏好）
   const [defaultSaveDir, setDefaultSaveDirState] = useState<string>(() => getDefaultSaveDir());
   const [isMoving, setIsMoving] = useState(false);
-  const [isExportingProject, setIsExportingProject] = useState(false);
 
   // 家谱树节点布局（全局偏好）：classic=经典模式，aligned=同辈齐平
   const [treeLayoutMode, setTreeLayoutModeState] = useState<TreeLayoutMode>(() => getTreeLayoutMode());
@@ -416,31 +414,6 @@ export default function SettingsPage() {
       setIsMoving(false);
     }
   };
-
-  // -------------------- 导出完整工程数据（网页版 → 桌面版迁移用） --------------------
-  const handleExportProject = async () => {
-    if (!project || isExportingProject) return;
-    setIsExportingProject(true);
-    try {
-      const stamp = new Date().toISOString().slice(0, 10);
-      const fileName = `${safeFolderName(project.meta.familyName)}_${stamp}.json`;
-      const result = await exportProjectFile(project, fileName);
-      if (result === 'saved') {
-        showToast(
-          isTauri()
-            ? '工程数据已导出，可在任意设备的「导入工程文件」中打开'
-            : '工程数据已下载到电脑，桌面版用「导入工程文件」即可载入',
-          'success'
-        );
-      }
-    } catch (err: any) {
-      showToast(`导出失败：${err?.message || err}`, 'error');
-    } finally {
-      setIsExportingProject(false);
-    }
-  };
-
-  const embeddedMediaCount = countEmbeddedMedia(project);
 
   // ==================== 多设备同步（WebDAV） ====================
   const syncKey = project.meta.syncKey;
@@ -1083,35 +1056,6 @@ export default function SettingsPage() {
                 ))}
               </ul>
             )}
-          </div>
-        </div>
-
-        {/* 数据迁移（网页版 ⇄ 桌面版） */}
-        <div className="settings-section">
-          <div className="settings-section-title">数据迁移</div>
-          <p className="dev-tool-desc" style={{ marginBottom: '16px' }}>
-            {isTauri()
-              ? '导出的 .json 只包含家谱数据（人物、关系、文字），照片 / 音视频是磁盘上的独立文件，不会被打包进去。要连同媒体一起迁移到另一台电脑，请用左侧「另存为 → YRJ」。'
-              : '网页版的数据保存在浏览器本地存储里，不是电脑上的文件。导出后在桌面版用「导入工程文件」载入，照片、音频、视频会一并还原。'}
-          </p>
-
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">导出完整工程数据</label>
-            <div className="path-actions">
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={handleExportProject}
-                disabled={isExportingProject}
-              >
-                {isExportingProject ? '⏳ 正在导出…' : '📤 导出工程数据 (.json)'}
-              </button>
-            </div>
-            <p className="form-hint" style={{ marginTop: '8px' }}>
-              {embeddedMediaCount > 0
-                ? `当前工程内嵌 ${embeddedMediaCount} 个媒体文件（照片 / 音频 / 视频），会一并打包进导出文件。`
-                : '当前工程没有内嵌媒体，导出文件很小。'}
-            </p>
           </div>
         </div>
 

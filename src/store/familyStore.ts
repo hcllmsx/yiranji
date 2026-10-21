@@ -21,7 +21,6 @@ import {
   loadProjectJson,
   packToYrj,
   createUniqueProjectWorkspace,
-  saveMediaFile,
   resolveWorkspaceDir,
   writeBinaryFile,
   webdavPush,
@@ -32,8 +31,6 @@ import {
   type SyncPullReport,
 } from '../utils/tauri';
 import {
-  extractEmbeddedMedia,
-  applyWorkspaceMediaPaths,
   rebaseMediaPathsToWorkspace,
 } from '../utils/projectPortable';
 import { getSyncSettings, isSyncConfigured, remoteDirFor, ensureSyncKey } from '../utils/cloudSync';
@@ -181,15 +178,6 @@ interface FamilyStore {
     skipPasswordCheck?: boolean
   ) => Promise<boolean>;
   importProjectFromJSON: (project: FamilyProject) => Promise<string>;
-  /**
-   * 桌面版：把一份工程数据（如网页版导出的 .json）还原成工作区文件夹，
-   * 内嵌的 base64 照片/音视频会写成 media/ 下的实体文件。
-   */
-  importProjectToWorkspace: (
-    project: FamilyProject,
-    parentDir: string,
-    baseFolderName: string
-  ) => Promise<{ projectId: string; workspacePath: string; mediaCount: number }>;
   saveCustomLayout: (layout: Record<string, { x: number; y: number }>) => void;
   clearCustomLayout: () => void;
   closeProject: () => void;
@@ -398,24 +386,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
         }
       }
 
-      // 4. 内嵌的 base64 媒体（网页版工程、网页版导出的 .yrj）→ 落地成 media/ 实体文件。
-      //    以前这里直接把 base64 丢掉，会导致从网页版迁来的照片、音视频全部消失。
-      const { media } = extractEmbeddedMedia(project, { clone: false });
-      if (media.length > 0) {
-        try {
-          for (const item of media) {
-            await saveMediaFile(workspacePath, item.filename, item.dataUrl);
-          }
-          project = applyWorkspaceMediaPaths(project, workspacePath);
-          await saveProjectJson(workspacePath, JSON.stringify(project, null, 2));
-        } catch (e) {
-          console.error('还原内嵌媒体失败，保留 base64 形式:', e);
-          // 回退到原始数据：base64 在内存里仍能正常显示，且不把占位路径写回磁盘
-          project = migrateProjectData(JSON.parse(json) as FamilyProject);
-        }
-      }
-
-      // 4.5 换电脑打开时，project.json 里仍是原电脑的绝对路径（如 C:\Users\A\...\media\photo.jpg），
+      // 4. 换电脑打开时，project.json 里仍是原电脑的绝对路径（如 C:\Users\A\...\media\photo.jpg），
       //     必须重新指向本机工作区的 media/，否则照片、音频、视频全部显示不出来。
       let rebasedCount = 0;
       project = rebaseMediaPathsToWorkspace(project, workspacePath, () => {
@@ -487,73 +458,6 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     });
 
     return projectId;
-  },
-
-  importProjectToWorkspace: async (
-    rawProject: FamilyProject,
-    parentDir: string,
-    baseFolderName: string
-  ) => {
-    if (!isTauri()) {
-      throw new Error('当前为浏览器模式，导入到本地文件夹仅在桌面版可用');
-    }
-
-    // 1. 抽出所有内嵌媒体（base64），工程里的路径先替换为占位符
-    //    clone: false —— rawProject 是本进程刚解析出来的对象，直接原地处理，避免大工程内存翻倍
-    const migrated = migrateProjectData(rawProject);
-    const { project: portable, media } = extractEmbeddedMedia(migrated, { clone: false });
-
-    // 2. 建工作区（同名自动加序号，绝不覆盖已有档案）
-    let workspacePath: string;
-    try {
-      workspacePath = await createUniqueProjectWorkspace(parentDir, baseFolderName);
-    } catch (e: any) {
-      throw new Error(`创建档案文件夹失败：${e?.message || e}`);
-    }
-
-    // 3. 逐个写出媒体实体文件（失败时明确指出是哪一个，便于定位）
-    for (let i = 0; i < media.length; i++) {
-      const item = media[i];
-      try {
-        await saveMediaFile(workspacePath, item.filename, item.dataUrl);
-      } catch (e: any) {
-        throw new Error(
-          `写入媒体文件失败（第 ${i + 1}/${media.length} 个：${item.filename}）：${e?.message || e}`
-        );
-      }
-    }
-
-    // 4. 占位符 -> 工作区绝对路径
-    const project = applyWorkspaceMediaPaths(portable, workspacePath);
-    const now = new Date().toISOString();
-    project.meta = { ...project.meta, updatedAt: now };
-
-    // 5. 落盘 project.json
-    await saveProjectJson(workspacePath, JSON.stringify(project, null, 2));
-
-    // 6. 切换为当前项目并写入最近列表
-    const projectId = uuidv4();
-    const recent = getRecentProjects();
-    const filtered = recent.filter((r) => r.filePath !== workspacePath);
-    filtered.unshift({
-      familyName: project.meta.familyName,
-      surname: project.meta.surname,
-      lastOpenedAt: now,
-      projectId,
-      filePath: workspacePath,
-    });
-    saveRecentProjects(filtered.slice(0, 10));
-
-    set({
-      currentProjectId: projectId,
-      currentFilePath: workspacePath,
-      projectPassword: null,
-      project,
-      isDirty: false,
-      recentProjects: filtered.slice(0, 10),
-    });
-
-    return { projectId, workspacePath, mediaCount: media.length };
   },
 
   saveCustomLayout: (layout: Record<string, { x: number; y: number }>) => {

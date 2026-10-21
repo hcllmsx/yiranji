@@ -8,12 +8,8 @@ import {
   selectProjectParentDir,
   createProjectWorkspace,
   openUrl,
-  selectImportFile,
-  readTextFile,
-  defaultImportDir,
 } from '../utils/tauri';
 import { getDefaultSaveDir } from '../utils/appPrefs';
-import { isValidProjectShape, safeFolderName } from '../utils/projectPortable';
 import './WelcomePage.css';
 
 export default function WelcomePage() {
@@ -26,7 +22,6 @@ export default function WelcomePage() {
     loadRecentProjects,
     removeRecentProject,
     importProjectFromJSON,
-    importProjectToWorkspace,
   } = useFamilyStore();
 
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -35,7 +30,6 @@ export default function WelcomePage() {
   const [password, setPassword] = useState('');
   // 新建档案的父目录：优先使用"设置 → 档案存储"里配置的默认位置
   const [selectedParentDir, setSelectedParentDir] = useState(() => getDefaultSaveDir());
-  const [isImporting, setIsImporting] = useState(false);
 
   // 密码解锁相关
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -287,116 +281,6 @@ export default function WelcomePage() {
     }
   };
 
-  // 导入工程数据（网页版导出的 .json，或旧版 .yrj 包），桌面版专用
-  const handleImportProject = async () => {
-    if (!isTauri() || isImporting) return;
-
-    let filePath: string | null = null;
-    try {
-      filePath = await selectImportFile();
-    } catch (e) {
-      showCustomAlert(`打开文件选择框失败：${e}`);
-      return;
-    }
-    if (!filePath) return;
-
-    // 旧版单文件包沿用"打开文件"流程（自动解包到同级目录）
-    if (filePath.toLowerCase().endsWith('.yrj')) {
-      try {
-        const isEncrypted = await isYrjFileEncrypted(filePath);
-        if (isEncrypted) {
-          setPendingOpenPath(filePath);
-          setUnlockPassword('');
-          setUnlockError('');
-          setShowPasswordModal(true);
-          return;
-        }
-        const success = await openProjectFromFile(filePath);
-        if (success) navigate('/tree');
-      } catch (err: any) {
-        if (err.message === 'PASSWORD_REQUIRED_OR_INCORRECT') {
-          setPendingOpenPath(err.workspacePath || filePath);
-          setUnlockPassword('');
-          setUnlockError('');
-          setShowPasswordModal(true);
-        } else {
-          showCustomAlert(`打开工程包失败：${err?.message || err}`);
-        }
-      }
-      return;
-    }
-
-    setIsImporting(true);
-    try {
-      const rawText = await readTextFile(filePath);
-      // 记事本另存的文件常带 UTF-8 BOM，JSON.parse 会因此失败
-      const text = rawText.replace(/^\uFEFF/, '');
-      let raw: any;
-      try {
-        raw = JSON.parse(text);
-      } catch {
-        showCustomAlert('这个文件不是有效的 JSON 数据，可能已损坏或选错了文件。');
-        return;
-      }
-
-      // 兼容单个工程对象与"多个工程的数组"两种形式
-      const list = Array.isArray(raw) ? raw : [raw];
-      const validProjects = list.filter(isValidProjectShape);
-
-      if (validProjects.length === 0) {
-        showCustomAlert('这不是以苒纪的工程数据文件（缺少 meta 或 persons 字段）。');
-        return;
-      }
-
-      // 保存位置：设置里的默认目录 → 系统「文档」目录 → 最后才弹框，尽量不打断流程
-      let parentDir = getDefaultSaveDir();
-      if (!parentDir) {
-        try {
-          parentDir = await defaultImportDir();
-        } catch {
-          parentDir = '';
-        }
-      }
-      if (!parentDir) {
-        const picked = await selectProjectParentDir(null);
-        if (!picked) return;
-        parentDir = picked;
-      }
-
-      const imported: Array<{ workspacePath: string; mediaCount: number; name: string }> = [];
-      for (const item of validProjects) {
-        const familyName = item.meta?.familyName || '以苒纪家谱';
-        const result = await importProjectToWorkspace(
-          item,
-          parentDir,
-          safeFolderName(familyName)
-        );
-        imported.push({ ...result, name: familyName });
-      }
-
-      const totalMedia = imported.reduce((sum, x) => sum + x.mediaCount, 0);
-      const lines = [
-        imported.length === 1 ? '导入成功！' : `导入成功！共 ${imported.length} 个家谱。`,
-        '',
-        '已保存到：',
-        ...imported.map((x) => x.workspacePath),
-      ];
-      if (totalMedia > 0) {
-        lines.push('', `已还原 ${totalMedia} 个照片 / 音频 / 视频文件。`);
-      }
-      if (validProjects.some((p: any) => p.meta?.hasPassword)) {
-        lines.push('', '注意：原档案启用了密码保护，之后重新打开需要输入原密码。');
-      }
-      lines.push('', '保存位置可在「设置 → 档案存储」里查看或迁移。');
-
-      showCustomAlert(lines.join('\n'), '导入完成', () => navigate('/tree'));
-    } catch (e: any) {
-      showCustomAlert(`导入失败：${e?.message || e}`);
-    } finally {
-      setIsImporting(false);
-    }
-  };
-
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     const now = new Date();
@@ -470,16 +354,7 @@ export default function WelcomePage() {
                 <span>📜</span>
                 <span>打开文件</span>
               </button>
-              <button
-                className="welcome-btn-open"
-                onClick={handleImportProject}
-                disabled={isImporting}
-                title="导入网页版导出的 .json 工程数据（照片、音频、视频会一并还原）"
-                style={{ width: '220px', display: 'inline-flex', justifyContent: 'center' }}
-              >
-                <span>📥</span>
-                <span>{isImporting ? '正在导入…' : '导入工程文件'}</span>
-              </button>
+
             </>
           )}
           {!isTauri() && (

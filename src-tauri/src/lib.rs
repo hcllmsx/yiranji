@@ -212,53 +212,6 @@ fn create_unique_project_workspace(parent_dir: String, base_name: String) -> Res
     Ok(candidate)
 }
 
-/// 读取任意文本文件（用于导入网页版导出的 .json 工程数据）
-/// 兼容 UTF-8（含 BOM）与 Windows 记事本的 UTF-16LE
-#[tauri::command]
-fn read_text_file(path: String) -> Result<String, String> {
-    let bytes = fs::read(&path).map_err(|e| format!("读取文件失败: {}", e))?;
-
-    let bytes = match String::from_utf8(bytes) {
-        Ok(text) => return Ok(text),
-        // 不是 UTF-8：保留原始字节，继续尝试 UTF-16LE
-        Err(err) => err.into_bytes(),
-    };
-
-    // 不是 UTF-8：尝试按 UTF-16LE 解码（记事本"Unicode"编码）
-    if bytes.len() % 2 == 0 {
-        let units: Vec<u16> = bytes
-            .chunks_exact(2)
-            .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-            .collect();
-        if let Ok(text) = String::from_utf16(&units) {
-            return Ok(text);
-        }
-    }
-
-    Err("这个文件不是 UTF-8 / UTF-16 文本，请在编辑器里另存为 UTF-8 后重试".to_string())
-}
-
-/// 默认导入目录：用户没设置过"默认保存位置"时，回落到系统"文档"目录，避免导入流程被目录选择框打断
-#[tauri::command]
-fn default_import_dir(app: tauri::AppHandle) -> Result<String, String> {
-    app.path()
-        .document_dir()
-        .map(|p| p.to_string_lossy().into_owned())
-        .map_err(|e| format!("无法定位文档目录: {}", e))
-}
-
-/// 选择要导入的工程数据文件（支持网页版导出的 .json 与旧版 .yrj 包）
-#[tauri::command]
-fn select_import_file() -> Result<Option<String>, String> {
-    let file = rfd::FileDialog::new()
-        .add_filter("以苒纪工程数据 (*.json)", &["json"])
-        .add_filter("以苒纪工程包 (*.yrj)", &["yrj"])
-        .add_filter("所有文件", &["*"])
-        .pick_file();
-
-    Ok(file.map(|p| p.to_string_lossy().into_owned()))
-}
-
 #[tauri::command]
 fn save_project_json(workspace_path: String, json_content: String) -> Result<(), String> {
     let file_path = format!("{}/project.json", workspace_path);
@@ -614,9 +567,6 @@ pub fn run() {
             create_project_workspace,
             create_unique_project_workspace,
             resolve_workspace_dir,
-            read_text_file,
-            default_import_dir,
-            select_import_file,
             save_project_json,
             load_project_json,
             save_media_file,
