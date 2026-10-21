@@ -132,8 +132,6 @@ function PersonNode({ data }: { data: PersonNodeData }) {
       ? getRelationshipText(perspectiveId, person.id, personsMap, project?.meta.siblingOrder)
       : '';
   const selfPronoun = person.gender === 'male' ? '他' : '她';
-  const perspectivePronoun =
-    perspectiveId && personsMap[perspectiveId]?.gender === 'male' ? '他' : '她';
 
   // 使用 useReactFlow 更新自身节点坐标
   const { setNodes } = useReactFlow();
@@ -249,7 +247,7 @@ function PersonNode({ data }: { data: PersonNodeData }) {
               </span>
               {reverseRelationText && (
                 <span className="tree-node-relation-line tree-node-relation-back">
-                  {perspectivePronoun}叫我：{reverseRelationText}
+                  {selfPronoun}叫我：{reverseRelationText}
                 </span>
               )}
             </>
@@ -1929,7 +1927,7 @@ function TreePageContent() {
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap'
             }} title={currentFilePath}>
-              📁 {currentFilePath}
+              {currentFilePath}
             </div>
           )}
         </div>
@@ -1973,6 +1971,9 @@ function TreePageContent() {
           </div>
         )}
         <div className="tree-toolbar-right">
+          <button className="btn btn-sm btn-secondary" onClick={() => navigate('/person/new/edit')}>
+            添加人员
+          </button>
           <button
             className="btn btn-sm btn-secondary perspective-switch-btn"
             onClick={() => {
@@ -1982,32 +1983,6 @@ function TreePageContent() {
             title="切换主视角：所有称谓与关系路径都以所选成员为基准"
           >
             主视角：{perspectiveLabel}
-          </button>
-          {treeLayoutMode === 'aligned' && (
-            <button
-              className="btn btn-sm btn-secondary"
-              onClick={() => setSortPersonId(project?.meta.defaultPerspectiveId || persons[0]?.id || null)}
-              title="调整同辈兄弟姐妹的长幼顺序（出生日期未知时也能指定排行）"
-            >
-              同辈排序
-            </button>
-          )}
-          <button
-            className={`btn btn-sm ${showCoordinates ? 'btn-primary' : 'btn-secondary'}`}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontWeight: 500,
-              boxShadow: showCoordinates ? '0 0 10px oklch(60% 0.16 250 / 0.3)' : 'none',
-              transition: 'all 0.2s'
-            }}
-            onClick={() => setShowCoordinates(!showCoordinates)}
-          >
-            {showCoordinates ? '隐藏坐标系' : '显示坐标系'}
-          </button>
-          <button className="btn btn-sm btn-secondary" onClick={() => navigate('/person/new/edit')}>
-            添加人员
           </button>
           <button
             className="btn btn-sm btn-secondary"
@@ -2042,12 +2017,20 @@ function TreePageContent() {
           </button>
           <button
             className="btn btn-sm btn-secondary"
+            onClick={() => setSortPersonId(project?.meta.defaultPerspectiveId || persons[0]?.id || null)}
+            title="调整同辈兄弟姐妹的长幼顺序（出生日期未知时也能指定排行）"
+          >
+            同辈排序
+          </button>
+          <button
+            className="btn btn-sm btn-secondary"
             onClick={() => {
               useDefaultLayoutRef.current = true;
               buildGraph();
             }}
+            title="重置所有卡片回到自动算法排布位置"
           >
-            重置位置
+            重置人员位置
           </button>
           <div className="custom-layout-btn-wrapper">
             <button
@@ -2061,9 +2044,9 @@ function TreePageContent() {
                 opacity: hasCustomLayout ? 1 : 0.5,
                 cursor: hasCustomLayout ? 'pointer' : 'not-allowed',
               }}
-              title="应用自定义拖拽后保存的卡片坐标布局"
+              title="应用自定义拖拽后保存的卡片坐标位置"
             >
-              自定义布局
+              自定义位置
             </button>
             {hasCustomLayout && (
               <button
@@ -2072,8 +2055,8 @@ function TreePageContent() {
                   e.stopPropagation();
                   setDialog({
                     show: true,
-                    title: '清除自定义布局',
-                    message: '确认清除所有自定义布局信息？所有手动拖拽的节点位置将被清空。',
+                    title: '清除自定义位置',
+                    message: '确认清除所有自定义位置信息？所有手动拖拽的节点位置将被清空。',
                     onConfirm: () => {
                       clearCustomLayout();
                       useDefaultLayoutRef.current = true;
@@ -2081,12 +2064,26 @@ function TreePageContent() {
                     },
                   });
                 }}
-                title="清除所有自定义布局信息"
+                title="清除所有自定义位置信息"
               >
                 ✕
               </button>
             )}
           </div>
+          <button
+            className={`btn btn-sm ${showCoordinates ? 'btn-primary' : 'btn-secondary'}`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontWeight: 500,
+              boxShadow: showCoordinates ? '0 0 10px oklch(60% 0.16 250 / 0.3)' : 'none',
+              transition: 'all 0.2s'
+            }}
+            onClick={() => setShowCoordinates(!showCoordinates)}
+          >
+            {showCoordinates ? '隐藏坐标系' : '显示坐标系'}
+          </button>
         </div>
       </div>
 
