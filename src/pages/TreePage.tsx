@@ -2356,7 +2356,7 @@ function TreePageContent() {
                       handleSwitchPerspective(targetId);
                     }}
                   >
-                    🧭 设为主视角
+                    ⭐ 设为主视角
                   </button>
                 )}
                 {canSortSiblings && (
@@ -2367,7 +2367,7 @@ function TreePageContent() {
                       setSortPersonId(perspectiveId || contextMenu.personId);
                     }}
                   >
-                    ↔ 同辈排序
+                    #️⃣ 同辈排序
                   </button>
                 )}
                 <div className="context-menu-divider" />
