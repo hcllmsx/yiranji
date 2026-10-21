@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFamilyStore } from '../store/familyStore';
 import { openDevtools, isTauri, selectFilePathForSaveZip, writeBinaryFile, getAppLogs, openUrl, selectProjectParentDir, moveProjectWorkspace, openInExplorer, webdavTest, webdavRemoteMeta, webdavListProjects, type RemoteSyncMeta, type RemoteProject } from '../utils/tauri';
-import { getDefaultSaveDir, setDefaultSaveDir, getTreeDisplayMode, setTreeDisplayMode, type TreeDisplayMode } from '../utils/appPrefs';
+import { getDefaultSaveDir, setDefaultSaveDir, getTreeDisplayMode, setTreeDisplayMode, type TreeDisplayMode, getTreeLayoutMode, setTreeLayoutMode, type TreeLayoutMode } from '../utils/appPrefs';
 import { exportProjectFile, countEmbeddedMedia, safeFolderName } from '../utils/projectPortable';
 import {
   getSyncSettings,
@@ -35,6 +35,13 @@ export default function SettingsPage() {
   const [defaultSaveDir, setDefaultSaveDirState] = useState<string>(() => getDefaultSaveDir());
   const [isMoving, setIsMoving] = useState(false);
   const [isExportingProject, setIsExportingProject] = useState(false);
+
+  // 家谱树节点布局（全局偏好）：classic=经典模式，aligned=同辈齐平
+  const [treeLayoutMode, setTreeLayoutModeState] = useState<TreeLayoutMode>(() => getTreeLayoutMode());
+  const handleTreeLayoutModeChange = (mode: TreeLayoutMode) => {
+    setTreeLayoutModeState(mode);
+    setTreeLayoutMode(mode);
+  };
 
   // 家谱树显示模式（全局偏好）：classic=原版连线，enhanced=增强连线
   const [treeDisplayMode, setTreeDisplayModeState] = useState<TreeDisplayMode>(() => getTreeDisplayMode());
@@ -694,9 +701,49 @@ export default function SettingsPage() {
         <div className="settings-section">
           <div className="settings-section-title">家谱树显示</div>
           <p className="dev-tool-desc" style={{ marginBottom: '16px' }}>
-            选择家谱树亲子连线的显示方式。切换后回到家谱树页面即可生效，仅影响显示，不改动任何人物数据。
+            选择家谱树成员卡片排版与亲子连线的显示方式。切换后回到家谱树页面即可生效，仅影响显示，不改动任何人物数据。
           </p>
 
+          <div style={{ fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>
+            节点布局方式
+          </div>
+          <div className="tree-mode-options" style={{ marginBottom: '20px' }}>
+            <label className={`tree-mode-option${treeLayoutMode === 'classic' ? ' is-active' : ''}`}>
+              <input
+                type="radio"
+                name="treeLayoutMode"
+                value="classic"
+                checked={treeLayoutMode === 'classic'}
+                onChange={() => handleTreeLayoutModeChange('classic')}
+              />
+              <span className="tree-mode-text">
+                <span className="tree-mode-name">经典模式</span>
+                <span className="tree-mode-desc">
+                  以主视角一脉为中心或偏左，其他脉左右交替排开；同辈成员按长幼顺序上下阶梯错落排布，尊卑有序、层级分明。
+                </span>
+              </span>
+            </label>
+
+            <label className={`tree-mode-option${treeLayoutMode === 'aligned' ? ' is-active' : ''}`}>
+              <input
+                type="radio"
+                name="treeLayoutMode"
+                value="aligned"
+                checked={treeLayoutMode === 'aligned'}
+                onChange={() => handleTreeLayoutModeChange('aligned')}
+              />
+              <span className="tree-mode-text">
+                <span className="tree-mode-name">同辈齐平</span>
+                <span className="tree-mode-desc">
+                  同辈所有成员在同一水平线严格拉齐，从左到右平铺排列（支持手动调整排行），紧凑规整。
+                </span>
+              </span>
+            </label>
+          </div>
+
+          <div style={{ fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>
+            亲子连线样式
+          </div>
           <div className="tree-mode-options">
             <label className={`tree-mode-option${treeDisplayMode === 'classic' ? ' is-active' : ''}`}>
               <input

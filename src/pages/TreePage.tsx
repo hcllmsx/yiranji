@@ -38,7 +38,15 @@ import {
   type SiblingOrderMap,
 } from '../utils/siblingOrder';
 import { convertLocalSrc } from '../utils/tauri';
-import { getTreeDisplayMode, TREE_DISPLAY_MODE_EVENT, type TreeDisplayMode } from '../utils/appPrefs';
+import {
+  getTreeDisplayMode,
+  TREE_DISPLAY_MODE_EVENT,
+  type TreeDisplayMode,
+  getTreeLayoutMode,
+  setTreeLayoutMode,
+  TREE_LAYOUT_MODE_EVENT,
+  type TreeLayoutMode,
+} from '../utils/appPrefs';
 import ImageViewer from '../components/ImageViewer';
 import { type Person, getAdoptiveFathers, getAdoptiveMothers } from '../types';
 import './TreePage.css';
@@ -369,6 +377,20 @@ const nodeTypes: NodeTypes = {
  * 子女不在家长下方等异常布局时返回 null，调用方回退为原生完整路径。
  * 输出与原生逐像素一致（已对照真实路径 d 串验证）。
  */
+// 递归判断某个节点是否是 targetId (默认主视角) 的直系祖先（即 targetId 是该节点的子嗣/子孙）
+const isPerspectiveDescendant = (
+  startPersonId: string,
+  targetId: string,
+  personsMap: Record<string, Person>
+): boolean => {
+  if (startPersonId === targetId) return true;
+  const person = personsMap[startPersonId];
+  if (!person) return false;
+
+  const children = person.relations.children || [];
+  return children.some((child) => isPerspectiveDescendant(child.id, targetId, personsMap));
+};
+
 function buildParentStepPath(
   sourceX: number,
   sourceY: number,
@@ -619,6 +641,17 @@ function TreePageContent() {
   // 家谱树亲子连线的显示模式（在"设置 → 家谱树显示"中切换）：
   // classic = 原版连线（每条亲子连线各画完整 smoothstep）；enhanced = 增强模式
   // （生父/生母称呼贴家长卡片、父母双方横杠只画一次）。默认 classic，保持与原版一致。
+  // 节点布局模式：classic = 经典模式（主脉居中、长幼错落）；aligned = 同辈齐平（同高拉齐、从左到右）
+  const [treeLayoutMode, setTreeLayoutModeState] = useState<TreeLayoutMode>(() => getTreeLayoutMode());
+  useEffect(() => {
+    const onLayoutModeChange = () => {
+      setTreeLayoutModeState(getTreeLayoutMode());
+      useDefaultLayoutRef.current = true;
+    };
+    window.addEventListener(TREE_LAYOUT_MODE_EVENT, onLayoutModeChange);
+    return () => window.removeEventListener(TREE_LAYOUT_MODE_EVENT, onLayoutModeChange);
+  }, []);
+
   const [treeDisplayMode, setTreeDisplayModeState] = useState<TreeDisplayMode>(() => getTreeDisplayMode());
   useEffect(() => {
     const onModeChange = () => setTreeDisplayModeState(getTreeDisplayMode());
@@ -1299,14 +1332,68 @@ function TreePageContent() {
       // 递归计算子代
       const children = person.relations.children || [];
       if (children.length > 0) {
-        // 子嗣排序：同辈中年龄最大的排最左。手动指定过排行时以手动顺序为准，
-        // 否则按出生日期（"未知"排最右，彼此按录入先后）。
         const childrenObj = [...children].map(c => project?.persons[c.id]).filter(Boolean) as Person[];
-        const sortedChildren: Person[] = sortSiblings(childrenObj, project?.meta.siblingOrder);
+        let sortedChildren: Person[] = [];
 
-        // 递归子树布局：所有子女统一在同一代际水平线上（同一辈对齐同一 Y 轴）
-        const childLayouts = sortedChildren.map((c) =>
-          layoutSubtree(c.id, currentY + 200)
+        if (treeLayoutMode === 'classic') {
+          // ====== 经典模式 ======
+          // 寻找包含主脉视角人员的子代作为中心锚点，其他手足左右交错排序，让主视角支系天然处于中心或偏左位置
+          let anchorIndex = -1;
+          if (perspectiveId) {
+            anchorIndex = childrenObj.findIndex(c =>
+              isPerspectiveDescendant(c.id, perspectiveId, project?.persons || {})
+            );
+          }
+
+          if (anchorIndex !== -1) {
+            const anchor = childrenObj[anchorIndex];
+            const others = childrenObj.filter((_, idx) => idx !== anchorIndex);
+
+            others.sort((a, b) => {
+              const dateA = a.birthDateSolar ? new Date(a.birthDateSolar).getTime() : Infinity;
+              const dateB = b.birthDateSolar ? new Date(b.birthDateSolar).getTime() : Infinity;
+              if (dateA !== dateB) return dateA - dateB;
+              return a.createdAt.localeCompare(b.createdAt);
+            });
+
+            const leftSide: Person[] = [];
+            const rightSide: Person[] = [];
+            if (others.length === 1) {
+              // 仅有两个手足时，将旁系手足放在右边，主脉锚点放在左边
+              rightSide.push(others[0]);
+            } else {
+              others.forEach((sib, index) => {
+                if (index % 2 === 0) {
+                  leftSide.unshift(sib);
+                } else {
+                  rightSide.push(sib);
+                }
+              });
+            }
+            sortedChildren = [...leftSide, anchor, ...rightSide];
+          } else {
+            sortedChildren = [...childrenObj];
+            sortedChildren.sort((a, b) => {
+              const dateA = a.birthDateSolar ? new Date(a.birthDateSolar).getTime() : Infinity;
+              const dateB = b.birthDateSolar ? new Date(b.birthDateSolar).getTime() : Infinity;
+              if (dateA !== dateB) return dateA - dateB;
+              return a.createdAt.localeCompare(b.createdAt);
+            });
+          }
+        } else {
+          // ====== 同辈齐平模式 ======
+          // 同辈中年龄最大的排最左。手动指定过排行时以手动顺序为准，否则按出生日期排序
+          sortedChildren = sortSiblings(childrenObj, project?.meta.siblingOrder);
+        }
+
+        // 递归子树布局：经典模式引入 50px 阶梯偏移；齐平模式统一在同一代际水平线
+        const childLayouts = sortedChildren.map((c, index) =>
+          layoutSubtree(
+            c.id,
+            treeLayoutMode === 'classic'
+              ? currentY + 200 + index * 50
+              : currentY + 200
+          )
         );
         // 从左往右通过 contours 消除子树重合。
         // 注意：必须与"左边所有已放置子树的合并轮廓"比较，而不是只与上一个子树比较，
@@ -1635,7 +1722,7 @@ function TreePageContent() {
       return scoreA - scoreB;
     });
     setEdges(defaultSortedEdges);
-  }, [project?.persons, project?.meta.defaultPerspectiveId, project?.meta.siblingOrder, setNodes, setEdges, getNodes, handleHoverStart, handleHoverEnd, treeDisplayMode]);
+  }, [project?.persons, project?.meta.defaultPerspectiveId, project?.meta.siblingOrder, setNodes, setEdges, getNodes, handleHoverStart, handleHoverEnd, treeDisplayMode, treeLayoutMode]);
 
   useEffect(() => {
     buildGraph();
@@ -2036,11 +2123,23 @@ function TreePageContent() {
           <button
             className="btn btn-sm btn-secondary"
             onClick={() => {
+              const nextMode = treeLayoutMode === 'classic' ? 'aligned' : 'classic';
+              setTreeLayoutMode(nextMode);
+              setTreeLayoutModeState(nextMode);
+              useDefaultLayoutRef.current = true;
+            }}
+            title={`当前节点布局：${treeLayoutMode === 'classic' ? '经典模式（主脉居中、长幼错落）' : '同辈齐平（同高拉齐、从左到右）'}，点击切换`}
+          >
+            📐 布局：{treeLayoutMode === 'classic' ? '经典模式' : '同辈齐平'}
+          </button>
+          <button
+            className="btn btn-sm btn-secondary"
+            onClick={() => {
               useDefaultLayoutRef.current = true;
               buildGraph();
             }}
           >
-            🔄 默认布局
+            🔄 重置位置
           </button>
           <div className="custom-layout-btn-wrapper">
             <button
