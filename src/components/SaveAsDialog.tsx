@@ -87,7 +87,7 @@ export default function SaveAsDialog({
   onExportHtml,
   notify,
 }: SaveAsDialogProps) {
-  const [category, setCategory] = useState<ExportCategory>('yrj');
+  const [category, setCategory] = useState<ExportCategory>(() => isTauri() ? 'yrj' : 'image');
   const [imageFormat, setImageFormat] = useState<'png' | 'jpg'>('png');
   const [renderScale, setRenderScale] = useState<RenderScale>(2);
   const [isExporting, setIsExporting] = useState(false);
@@ -95,7 +95,7 @@ export default function SaveAsDialog({
   // 每次打开时重置选择状态
   useEffect(() => {
     if (open) {
-      setCategory('yrj');
+      setCategory(isTauri() ? 'yrj' : 'image');
       setImageFormat('png');
       setRenderScale(2);
       setIsExporting(false);
@@ -177,21 +177,35 @@ export default function SaveAsDialog({
         <div className="saveas-body">
           {/* 左侧：类别选择 */}
           <nav className="saveas-category-list">
-            {CATEGORY_OPTIONS.map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                className={`saveas-category-item ${category === opt.id ? 'selected' : ''}`}
-                onClick={() => setCategory(opt.id)}
-                disabled={isExporting}
-              >
-                <span className="saveas-category-icon">{opt.icon}</span>
-                <span className="saveas-category-info">
-                  <span className="saveas-category-title">{opt.title}</span>
-                  <span className="saveas-category-brief">{opt.brief}</span>
-                </span>
-              </button>
-            ))}
+            {CATEGORY_OPTIONS.map((opt) => {
+              const isDisabled = opt.id === 'yrj' && !isTauri();
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  className={`saveas-category-item ${category === opt.id ? 'selected' : ''}`}
+                  onClick={() => !isDisabled && setCategory(opt.id)}
+                  disabled={isExporting || isDisabled}
+                  style={isDisabled ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
+                  title={isDisabled ? '网页版不支持导出 YRJ 档案，请使用桌面版客户端' : undefined}
+                >
+                  <span className="saveas-category-icon">{opt.icon}</span>
+                  <span className="saveas-category-info">
+                    <span className="saveas-category-title">
+                      {opt.title}
+                      {isDisabled && (
+                        <span style={{ fontSize: '11px', marginLeft: '6px', color: 'var(--color-text-tertiary)' }}>
+                          (网页版不可用)
+                        </span>
+                      )}
+                    </span>
+                    <span className="saveas-category-brief">
+                      {isDisabled ? '仅桌面版客户端支持' : opt.brief}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
           </nav>
 
           {/* 右侧：详情面板 */}
@@ -199,11 +213,15 @@ export default function SaveAsDialog({
             <div className="saveas-detail-header">
               <div className="saveas-detail-title">{detail.title}</div>
               <div className="saveas-detail-desc">{detail.desc}</div>
-              {!isTauri() && (
+              {!isTauri() && category === 'yrj' ? (
+                <div className="saveas-web-hint" style={{ color: 'var(--color-warning, #d97706)', marginTop: '8px' }}>
+                  ⚠️ 网页版受浏览器沙箱限制，无法打包导出包含本地磁盘媒体的 YRJ 档案。如需完整归档与媒体管理，请使用桌面版客户端，或导出「JSON 数据」。
+                </div>
+              ) : !isTauri() ? (
                 <div className="saveas-web-hint">
                   浏览器模式：点击保存后会下载到系统的「下载」文件夹。
                 </div>
-              )}
+              ) : null}
             </div>
 
             {isImage && (
@@ -264,9 +282,13 @@ export default function SaveAsDialog({
                 type="button"
                 className="btn btn-primary btn-sm saveas-confirm-btn"
                 onClick={handleConfirm}
-                disabled={isExporting}
+                disabled={isExporting || (category === 'yrj' && !isTauri())}
               >
-                {isExporting ? '⏳ 导出中…' : confirmLabel}
+                {isExporting
+                  ? '⏳ 导出中…'
+                  : category === 'yrj' && !isTauri()
+                    ? '网页版不可用'
+                    : confirmLabel}
               </button>
             </div>
           </div>
