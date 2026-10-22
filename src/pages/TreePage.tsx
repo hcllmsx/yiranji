@@ -43,7 +43,6 @@ import {
   TREE_LAYOUT_MODE_EVENT,
   type TreeLayoutMode,
 } from '../utils/appPrefs';
-import ImageViewer from '../components/ImageViewer';
 import { type Person, getAdoptiveFathers, getAdoptiveMothers } from '../types';
 import './TreePage.css';
 
@@ -154,7 +153,6 @@ function PersonNode({ data }: { data: PersonNodeData }) {
   const [editX, setEditX] = useState('');
   const [editY, setEditY] = useState('');
   // 头像大图查看
-  const [avatarViewerOpen, setAvatarViewerOpen] = useState(false);
 
   // 节点被拖拽时，若非编辑态，则自动更新输入框中的预设值
   useEffect(() => {
@@ -291,14 +289,7 @@ function PersonNode({ data }: { data: PersonNodeData }) {
       <Handle type="target" position={Position.Left} id="left-target" style={{ opacity: 0 }} />
 
       <div
-        className={`tree-node-avatar${canDisplaySrc(person.avatar) ? ' clickable' : ''}`}
-        title={canDisplaySrc(person.avatar) ? '点击查看头像大图' : undefined}
-        onClick={(e) => {
-          if (!canDisplaySrc(person.avatar)) return;
-          e.stopPropagation();
-          setAvatarViewerOpen(true);
-        }}
-        onDoubleClick={(e) => e.stopPropagation()}
+        className="tree-node-avatar"
       >
         {canDisplaySrc(person.avatar) ? (
           <img
@@ -368,20 +359,6 @@ function PersonNode({ data }: { data: PersonNodeData }) {
 
       <Handle type="source" position={Position.Bottom} id="bottom" style={{ opacity: 0 }} />
 
-      {avatarViewerOpen && person.avatar && (
-        <ImageViewer
-          images={[
-            {
-              src: convertLocalSrc(person.avatar),
-              caption: `${fullName} · 头像`,
-              meta: person.birthDateSolar ? `生于 ${person.birthDateSolar.slice(0, 10)}` : '',
-              alt: fullName,
-            },
-          ]}
-          title="头像"
-          onClose={() => setAvatarViewerOpen(false)}
-        />
-      )}
     </div>
   );
 }

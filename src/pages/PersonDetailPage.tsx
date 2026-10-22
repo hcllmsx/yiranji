@@ -38,7 +38,6 @@ export default function PersonDetailPage() {
 
   // 通用图片查看器：照片墙某一张 / 头像大图
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
-  const [viewerAvatar, setViewerAvatar] = useState<'avatar' | 'avatarRect' | null>(null);
 
   // 自定义确认对话框
   const [dialog, setDialog] = useState<{
@@ -531,26 +530,15 @@ export default function PersonDetailPage() {
     };
   });
 
-  const avatarViewerImages: ViewerImage[] = [];
-  if (canDisplaySrc(person.avatarRect)) {
-    avatarViewerImages.push({
-      src: convertLocalSrc(person.avatarRect),
-      caption: `${fullName} · 形象大图`,
-      meta: person.avatarRectPhotoDate
-        ? `拍摄于 ${formatDate(person.avatarRectPhotoDate)}`
-        : '',
-      alt: fullName,
-    });
-  }
-  if (canDisplaySrc(person.avatar)) {
-    avatarViewerImages.push({
-      src: convertLocalSrc(person.avatar),
-      caption: `${fullName} · 圆形头像`,
-      meta: person.avatarPhotoDate ? `拍摄于 ${formatDate(person.avatarPhotoDate)}` : '',
-      alt: fullName,
-    });
-  }
-  const avatarViewerStart = viewerAvatar === 'avatar' && person.avatarRect ? 1 : 0;
+  // 形象照 / 头像只是查看相册的入口：点击后打开相册，定位到对应的「头像原图」
+  // （没有登记头像原图的旧数据不可点击）
+  const headerOriginalIndex = (() => {
+    const preferred: 'rect' | 'circle' = canDisplaySrc(person.avatarRect) ? 'rect' : 'circle';
+    let idx = person.photos.findIndex((p) => p.avatarOriginalFor?.includes(preferred));
+    if (idx < 0) idx = person.photos.findIndex((p) => (p.avatarOriginalFor?.length ?? 0) > 0);
+    return idx;
+  })();
+  const headerClickable = headerOriginalIndex >= 0;
 
   return (
     <div className="person-detail-page">
@@ -562,9 +550,9 @@ export default function PersonDetailPage() {
             <img
               src={convertLocalSrc(person.avatarRect)}
               alt={fullName}
-              className="rect-avatar-img clickable"
-              onClick={() => setViewerAvatar('avatarRect')}
-              title="点击查看大图（可缩放）"
+              className={`rect-avatar-img${headerClickable ? ' clickable' : ''}`}
+              onClick={headerClickable ? () => setViewerIndex(headerOriginalIndex) : undefined}
+              title={headerClickable ? '点击查看相册（头像原图）' : undefined}
               onError={(e) => { e.currentTarget.style.display = 'none'; }}
             />
           ) : canDisplaySrc(person.avatar) ? (
@@ -572,9 +560,9 @@ export default function PersonDetailPage() {
             <img
               src={convertLocalSrc(person.avatar)}
               alt={fullName}
-              className={`clickable ${person.isDefaultPerspective ? 'perspective-border' : ''}`}
-              onClick={() => setViewerAvatar('avatar')}
-              title="点击查看大图（可缩放）"
+              className={`${headerClickable ? 'clickable ' : ''}${person.isDefaultPerspective ? 'perspective-border' : ''}`}
+              onClick={headerClickable ? () => setViewerIndex(headerOriginalIndex) : undefined}
+              title={headerClickable ? '点击查看相册（头像原图）' : undefined}
               onError={(e) => { e.currentTarget.style.display = 'none'; }}
             />
           ) : (
@@ -774,17 +762,26 @@ export default function PersonDetailPage() {
           <div className="photo-grid">
             {person.photos.map((photo, photoIndex) => (
               <div key={photo.id} className="photo-grid-item">
-                <button
-                  type="button"
-                  className="media-delete-btn"
-                  aria-label="删除照片"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    confirmRemovePhoto(photo.id, photo.path);
-                  }}
-                >
-                  ×
-                </button>
+                {(photo.avatarOriginalFor?.length ?? 0) > 0 ? (
+                  <span
+                    className="photo-avatar-tag"
+                    title="该照片正被头像引用，删除头像后才能删除"
+                  >
+                    头像原图
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="media-delete-btn"
+                    aria-label="删除照片"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      confirmRemovePhoto(photo.id, photo.path);
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
                 <button
                   type="button"
                   className="photo-grid-item-inner"
@@ -1011,15 +1008,6 @@ export default function PersonDetailPage() {
         />
       )}
 
-      {/* 通用图片查看器：头像 / 形象照 */}
-      {viewerAvatar !== null && avatarViewerImages.length > 0 && (
-        <ImageViewer
-          images={avatarViewerImages}
-          startIndex={avatarViewerStart}
-          title={viewerAvatar === 'avatarRect' ? '形象大图' : '头像'}
-          onClose={() => setViewerAvatar(null)}
-        />
-      )}
     </div>
   );
 }

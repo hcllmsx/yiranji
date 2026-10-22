@@ -8,6 +8,7 @@ import {
   selectProjectParentDir,
   createProjectWorkspace,
   openUrl,
+  installSampleWorkspace,
 } from '../utils/tauri';
 import { getDefaultSaveDir } from '../utils/appPrefs';
 import './WelcomePage.css';
@@ -214,6 +215,17 @@ export default function WelcomePage() {
     }
   };
 
+  // 打开随软件发布的示例家谱
+  const handleOpenSample = async () => {
+    try {
+      const path = await installSampleWorkspace();
+      const success = await openProjectFromFile(path);
+      if (success) navigate('/tree');
+    } catch (e) {
+      showCustomAlert(`打开示例家谱失败: ${e}`);
+    }
+  };
+
   // 解锁并打开
   const handleUnlockConfirm = async () => {
     if (!pendingOpenPath) return;
@@ -353,6 +365,14 @@ export default function WelcomePage() {
               >
                 <span>📜</span>
                 <span>打开文件</span>
+              </button>
+              <button
+                className="welcome-btn-open"
+                onClick={handleOpenSample}
+                style={{ width: '220px', display: 'inline-flex', justifyContent: 'center' }}
+              >
+                <span>📖</span>
+                <span>示例家谱</span>
               </button>
             </>
           ) : (

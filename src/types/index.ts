@@ -32,6 +32,8 @@ export interface Photo {
   path: string;      // 资源路径（相对路径或 blob URL）
   date?: string;      // 拍摄日期 YYYY-MM-DD
   caption?: string;   // 描述
+  /** 标记这张照片是哪种头像的「头像原图」；被头像引用期间不允许删除 */
+  avatarOriginalFor?: Array<'circle' | 'rect'>;
 }
 
 /** 音频文件 */

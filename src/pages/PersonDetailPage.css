@@ -790,3 +790,18 @@
 .person-detail-avatar img.rect-avatar-img.clickable:hover {
   transform: scale(1.008);
 }
+
+/* 照片栏：「头像原图」标签（被头像引用期间不显示删除按钮） */
+.photo-avatar-tag {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  padding: 2px 8px;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 999px;
+  pointer-events: none;
+}

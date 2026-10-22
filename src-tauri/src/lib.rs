@@ -173,6 +173,43 @@ fn move_project_workspace(from_workspace: String, to_parent_dir: String) -> Resu
     Ok(dest_str)
 }
 
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let target = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&entry.path(), &target)?;
+        } else {
+            fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
+}
+
+/// 把随安装包发布的示例家谱释放到应用数据目录（可读写），已存在则不覆盖，返回工作区路径
+#[tauri::command]
+fn install_sample_workspace(app: tauri::AppHandle) -> Result<String, String> {
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("无法定位资源目录: {}", e))?;
+    let src = resource_dir.join("sample-family");
+    if !src.join("project.json").is_file() {
+        return Err("安装包中未找到示例家谱".to_string());
+    }
+    let dest = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("无法定位应用数据目录: {}", e))?
+        .join("samples")
+        .join("以苒纪示例家谱");
+    if !dest.join("project.json").is_file() {
+        copy_dir_recursive(&src, &dest).map_err(|e| format!("释放示例家谱失败: {}", e))?;
+    }
+    Ok(dest.to_string_lossy().replace('\\', "/"))
+}
+
 #[tauri::command]
 fn create_project_workspace(parent_dir: String, folder_name: String) -> Result<String, String> {
     let workspace_path = format!("{}/{}", parent_dir, folder_name);
@@ -440,22 +477,30 @@ fn delete_media_file(workspace_path: String, media_path: String) -> Result<(), S
         return Err("只能删除当前工作区 media 目录下的文件".to_string());
     }
 
-    // 智能清理：如果被删除的文件是在以 "avatar_" 开头的专属头像子目录下，直接物理删除整个文件夹
-    if file_path.is_file() {
-        if let Some(parent) = file_path.parent() {
-            if let Some(dir_name) = parent.file_name().and_then(|n| n.to_str()) {
-                if dir_name.starts_with("avatar_") {
-                    fs::remove_dir_all(parent)
-                        .map_err(|e| format!("删除头像文件夹失败: {}", e))?;
-                    return Ok(());
+    fs::remove_file(&file_path)
+        .map_err(|e| format!("删除媒体文件失败: {}", e))?;
+
+    // 智能清理：以 "avatar_" 开头的专属头像子目录，在其中文件被删光后顺带移除空目录。
+    // 目录里可能还留有「头像原图」（登记在照片栏中），所以不能整目录删除。
+    if let Some(parent) = file_path.parent() {
+        if let Some(dir_name) = parent.file_name().and_then(|n| n.to_str()) {
+            if dir_name.starts_with("avatar_") {
+                let is_empty = fs::read_dir(parent)
+                    .map(|mut it| it.next().is_none())
+                    .unwrap_or(false);
+                if is_empty {
+                    let _ = fs::remove_dir(parent);
                 }
             }
         }
     }
-
-    fs::remove_file(&file_path)
-        .map_err(|e| format!("删除媒体文件失败: {}", e))?;
     Ok(())
+}
+
+/// 批量检查媒体文件是否存在（用于旧数据迁移时判断头像原图文件是否还在）
+#[tauri::command]
+fn check_media_files_exist(paths: Vec<String>) -> Vec<bool> {
+    paths.iter().map(|p| PathBuf::from(p).is_file()).collect()
 }
 
 #[tauri::command]
@@ -603,6 +648,8 @@ pub fn run() {
             move_project_workspace,
             create_project_workspace,
             create_unique_project_workspace,
+            install_sample_workspace,
+            check_media_files_exist,
             resolve_workspace_dir,
             save_project_json,
             backup_project_json,

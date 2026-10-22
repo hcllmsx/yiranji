@@ -112,6 +112,20 @@ export async function createUniqueProjectWorkspace(parentDir: string, baseName: 
   return api.invoke<string>('create_unique_project_workspace', { parentDir, baseName });
 }
 
+/** 批量检查媒体文件是否存在 */
+export async function checkMediaFilesExist(paths: string[]): Promise<boolean[]> {
+  const api = await getTauriApi();
+  if (!api || paths.length === 0) return paths.map(() => false);
+  return api.invoke<boolean[]>('check_media_files_exist', { paths });
+}
+
+/** 释放随安装包发布的示例家谱，返回其工作区路径 */
+export async function installSampleWorkspace(): Promise<string> {
+  const api = await getTauriApi();
+  if (!api) throw new Error('未运行在 Tauri 环境中');
+  return api.invoke<string>('install_sample_workspace');
+}
+
 /**
  * 把用户选中的路径（文件夹或 .json）规范化成工程工作区目录
  */

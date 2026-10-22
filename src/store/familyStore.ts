@@ -35,6 +35,7 @@ import {
 } from '../utils/tauri';
 import {
   rebaseMediaPathsToWorkspace,
+  registerLegacyAvatarOriginals,
 } from '../utils/projectPortable';
 import { getSyncSettings, isSyncConfigured, remoteDirFor, ensureSyncKey } from '../utils/cloudSync';
 import { migrateProjectData, type MigrationReport } from '../utils/dataMigration';
@@ -420,7 +421,14 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
           console.error('迁移前备份 project.json 失败:', e);
         }
       }
-      if (rebasedCount > 0 || migrationReport.versionBumped) {
+      // 4.4 旧版头像原图（original.xxx）登记为照片栏里带标签的「头像原图」
+      let avatarOriginalsRegistered = false;
+      try {
+        avatarOriginalsRegistered = await registerLegacyAvatarOriginals(project);
+      } catch (e) {
+        console.error('登记旧头像原图失败:', e);
+      }
+      if (rebasedCount > 0 || migrationReport.versionBumped || avatarOriginalsRegistered) {
         await saveProjectJson(workspacePath, JSON.stringify(project, null, 2));
       }
 
