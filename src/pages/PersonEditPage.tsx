@@ -1114,7 +1114,7 @@ export default function PersonEditPage() {
 
         const virtualMother: Person = {
           id: genMotherId,
-          surname: '',
+          surname: surname || project.meta.surname || '未设置',
           givenName: '（母亲）',
           gender: 'female',
           birthTimePrecision: 'date',

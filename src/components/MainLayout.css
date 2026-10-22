@@ -224,13 +224,13 @@
 }
 
 .saveas-dialog {
-  width: 720px;
+  width: 780px;
   max-width: calc(100vw - 48px);
   background-color: var(--color-bg-card);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xl);
-  padding: var(--space-6);
+  padding: 28px;
   animation: saveasSlideUp var(--transition-normal) cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 
@@ -262,9 +262,33 @@
 /* 双栏布局：左类别选择 + 右详情面板（固定高度取图片类的需求，切换类别时弹窗尺寸不变） */
 .saveas-body {
   display: grid;
-  grid-template-columns: 168px 1fr;
-  gap: var(--space-4);
-  height: 360px;
+  grid-template-columns: 184px 1fr;
+  gap: var(--space-5);
+  height: 410px;
+}
+
+.saveas-placeholder-row {
+  margin-top: var(--space-3);
+  padding: 8px 12px;
+  background-color: var(--color-bg-secondary);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+}
+
+.saveas-placeholder-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  user-select: none;
+}
+
+.saveas-placeholder-label input[type="checkbox"] {
+  cursor: pointer;
 }
 
 /* 左侧：类别列表 */

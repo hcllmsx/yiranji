@@ -80,9 +80,13 @@
 }
 
 .person-card.is-placeholder {
-  border-style: dashed;
-  opacity: 0.85;
+  border: 1.5px dashed var(--color-border);
+  opacity: 1;
   background-color: var(--color-bg-secondary);
+}
+
+.person-card.is-placeholder:hover {
+  border-color: var(--color-accent);
 }
 
 .person-card-avatar {

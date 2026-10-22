@@ -65,17 +65,27 @@ export interface TreeBounds {
  * 该方式与 React 组件状态完全解耦，天然包含用户手动拖拽后的自定义布局。
  */
 export function getTreeDomBounds(viewport: HTMLElement): TreeBounds {
-  const nodeEls = Array.from(viewport.querySelectorAll<HTMLElement>('.react-flow__node'));
-  if (nodeEls.length === 0) {
+  const allNodeEls = Array.from(viewport.querySelectorAll<HTMLElement>('.react-flow__node'));
+  if (allNodeEls.length === 0) {
     throw new Error('画布上没有人员节点，无法导出');
   }
+
+  // 若未强制包含占位成员，则忽略被标记为 hidden 的占位节点，防止导出包围盒顶部/边缘留白
+  const isForceInclude = viewport.classList.contains('export-include-placeholders');
+  const nodeEls = isForceInclude
+    ? allNodeEls
+    : allNodeEls.filter((el) => {
+        const inner = el.querySelector('.tree-person-node');
+        return !inner || !inner.classList.contains('placeholder-hidden');
+      });
+  const targetEls = nodeEls.length > 0 ? nodeEls : allNodeEls;
 
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
 
-  nodeEls.forEach((el) => {
+  targetEls.forEach((el) => {
     const m = new DOMMatrix(getComputedStyle(el).transform === 'none' ? '' : getComputedStyle(el).transform);
     const w = el.offsetWidth;
     const h = el.offsetHeight;

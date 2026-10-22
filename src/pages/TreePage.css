@@ -272,8 +272,74 @@
 
 .tree-person-node.is-placeholder {
   border-style: dashed !important;
-  opacity: 0.85;
   background-color: var(--color-bg-secondary, #fafafa);
+}
+
+.tree-person-node.is-placeholder.placeholder-active {
+  opacity: 0.85 !important;
+  pointer-events: auto !important;
+  transition: opacity 0.15s ease;
+}
+
+.tree-person-node.is-placeholder.placeholder-fading {
+  animation: placeholderFadeOut 3s forwards;
+}
+
+@keyframes placeholderFadeOut {
+  0% {
+    opacity: 0.85;
+    pointer-events: auto;
+  }
+  33.3% {
+    /* 前 1 秒内完全保持可见与可点击交互 */
+    opacity: 0.85;
+    pointer-events: auto;
+  }
+  100% {
+    /* 接下来的 2 秒内渐变消失并禁用交互 */
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+.edge-placeholder-fading path {
+  animation: placeholderEdgeFadeOut 3s forwards;
+}
+
+@keyframes placeholderEdgeFadeOut {
+  0% {
+    opacity: 0.15;
+    pointer-events: none;
+  }
+  33.3% {
+    opacity: 0.15;
+    pointer-events: none;
+  }
+  100% {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+.tree-person-node.placeholder-hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.export-include-placeholders .tree-person-node.placeholder-hidden,
+.export-include-placeholders .tree-person-node.placeholder-fading {
+  opacity: 0.85 !important;
+  pointer-events: auto !important;
+  animation: none !important;
+}
+
+.export-include-placeholders .react-flow__edge {
+  opacity: 1 !important;
+}
+
+.export-include-placeholders .react-flow__edge path {
+  opacity: 1 !important;
+  animation: none !important;
 }
 
 .tree-node-placeholder-tag {

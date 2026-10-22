@@ -99,16 +99,16 @@ export default function MainLayout() {
   }, [navigate]);
 
   const handleExportImage = useCallback(
-    async (format: 'jpg' | 'png', renderScale: RenderScale) => {
+    async (format: 'jpg' | 'png', renderScale: RenderScale, options?: { includePlaceholders?: boolean }) => {
       await ensureTreeCanvas();
-      return exportTreeImage(format, renderScale, `${familyName}-家谱图.${format}`);
+      return exportTreeImage(format, renderScale, `${familyName}-家谱图.${format}`, options);
     },
     [ensureTreeCanvas, familyName]
   );
 
   // HTML 图谱导出不依赖页面 DOM（自己算布局），因此无需先切到家谱树
-  const handleExportHtml = useCallback(async () => {
-    return exportTreeGraphHtml(`${familyName}-家谱图.html`, `${familyName} · 家谱图`);
+  const handleExportHtml = useCallback(async (options?: { includePlaceholders?: boolean }) => {
+    return exportTreeGraphHtml(`${familyName}-家谱图.html`, `${familyName} · 家谱图`, options);
   }, [familyName]);
 
   if (!project) {
