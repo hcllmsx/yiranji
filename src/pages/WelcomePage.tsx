@@ -358,42 +358,56 @@ export default function WelcomePage() {
             </>
           )}
           {!isTauri() && (
-            <button
-              className="welcome-btn-open"
-              onClick={() => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = '.json';
-                input.onchange = async (e) => {
-                  const file = (e.target as HTMLInputElement).files?.[0];
-                  if (!file) return;
-                  
-                  const reader = new FileReader();
-                  reader.onload = async (event) => {
-                    try {
-                      const jsonStr = event.target?.result as string;
-                      const project = JSON.parse(jsonStr);
-                      if (!project.meta || !project.persons) {
-                        showCustomAlert("无效的以苒纪家谱 JSON 工程文件！");
-                        return;
+            <>
+              {/* 导入导出JSON数据的功能为开发时调整前端时专用，请勿将此功能显示到桌面版中。 */}
+              <button
+                className="welcome-btn-open"
+                onClick={() => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = '.json';
+                  input.onchange = async (e) => {
+                    const file = (e.target as HTMLInputElement).files?.[0];
+                    if (!file) return;
+                    
+                    const reader = new FileReader();
+                    reader.onload = async (event) => {
+                      try {
+                        const jsonStr = event.target?.result as string;
+                        const project = JSON.parse(jsonStr);
+                        if (!project.meta || !project.persons) {
+                          showCustomAlert("无效的以苒纪家谱 JSON 工程文件！");
+                          return;
+                        }
+                        const projectId = await importProjectFromJSON(project);
+                        if (projectId) {
+                          navigate('/tree');
+                        }
+                      } catch (err) {
+                        showCustomAlert(`导入工程文件失败: ${err}`);
                       }
-                      const projectId = await importProjectFromJSON(project);
-                      if (projectId) {
-                        navigate('/tree');
-                      }
-                    } catch (err) {
-                      showCustomAlert(`导入工程文件失败: ${err}`);
-                    }
+                    };
+                    reader.readAsText(file);
                   };
-                  reader.readAsText(file);
-                };
-                input.click();
-              }}
-              style={{ width: '220px', display: 'inline-flex', justifyContent: 'center' }}
-            >
-              <span>📥</span>
-              <span>导入工程 JSON</span>
-            </button>
+                  input.click();
+                }}
+                style={{ width: '220px', display: 'inline-flex', justifyContent: 'center' }}
+              >
+                <span>📥</span>
+                <span>导入工程 JSON</span>
+              </button>
+              <div
+                style={{
+                  marginTop: '12px',
+                  fontSize: '13px',
+                  color: 'var(--color-text-tertiary)',
+                  textAlign: 'center',
+                  lineHeight: '1.5',
+                }}
+              >
+                网页版仅为开发调整前端时使用，某些功能可能不可用
+              </div>
+            </>
           )}
         </div>
 

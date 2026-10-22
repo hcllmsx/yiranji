@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import type { RenderScale, ImageExportResult } from '../utils/imageExport';
 import { isTauri } from '../utils/tauri';
+import { useFamilyStore } from '../store/familyStore';
 
 // 以苒纪 — 另存为弹窗（左选格式，右看详情）
 //
 // 左侧为三个导出类别：YRJ 档案 / 图片（JPG·PNG）/ HTML 网页；
 // 右侧为对应详情面板：格式子选项（图片类）、渲染倍率、默认文件名预览与保存按钮。
 
-export type ExportCategory = 'yrj' | 'image' | 'html';
+export type ExportCategory = 'yrj' | 'image' | 'html' | 'json';
 export type ExportFormat = 'yrj' | 'jpg' | 'png' | 'html';
 
 export type NotifyFn = (text: string, type: 'success' | 'error' | 'info') => void;
@@ -26,6 +27,7 @@ interface SaveAsDialogProps {
   notify: NotifyFn;
 }
 
+// 导入导出JSON数据的功能为开发时调整前端时专用，请勿将此功能显示到桌面版中。
 const CATEGORY_OPTIONS: Array<{
   id: ExportCategory;
   icon: string;
@@ -35,6 +37,16 @@ const CATEGORY_OPTIONS: Array<{
   { id: 'yrj', icon: '🗂️', title: 'YRJ 档案', brief: '完整档案可再编辑' },
   { id: 'image', icon: '🖼️', title: '图片', brief: 'PNG · JPG' },
   { id: 'html', icon: '🌐', title: 'HTML 网页', brief: '可缩放 · 切换主视角' },
+  ...(!isTauri()
+    ? [
+        {
+          id: 'json' as const,
+          icon: '📄',
+          title: 'JSON 数据',
+          brief: '纯数据 · 网页调试专用',
+        },
+      ]
+    : []),
 ];
 
 const CATEGORY_DETAILS: Record<
@@ -52,6 +64,10 @@ const CATEGORY_DETAILS: Record<
   html: {
     title: 'HTML 网页',
     desc: '单文件网页，双击即可在浏览器打开。只读不可编辑：可滚轮缩放、拖拽平移、悬浮卡片查看「我是他 / 他是我」双向称谓，还能在右上角切换主视角，适合发给亲友各自查看。',
+  },
+  json: {
+    title: 'JSON 数据',
+    desc: '导出当前工程的完整 project.json 数据文件，仅包含文字与结构数据。专供网页模式下测试与再次导入使用。',
   },
 };
 
@@ -96,7 +112,9 @@ export default function SaveAsDialog({
       ? '保存档案'
       : isImage
         ? `保存为 ${IMAGE_FORMAT_INFO[imageFormat].label}`
-        : '保存网页';
+        : category === 'html'
+          ? '保存网页'
+          : '导出 JSON 数据';
 
   const handleConfirm = async () => {
     if (isExporting) return;
@@ -119,10 +137,26 @@ export default function SaveAsDialog({
           'success'
         );
         onClose();
-      } else {
+      } else if (category === 'html') {
         const result = await onExportHtml();
         if (result === 'cancelled') return;
         notify('家谱图 HTML 网页已成功导出！', 'success');
+        onClose();
+      } else if (category === 'json') {
+        // 导入导出JSON数据的功能为开发时调整前端时专用，请勿将此功能显示到桌面版中。
+        const project = useFamilyStore.getState().project;
+        if (!project) return;
+        const jsonStr = JSON.stringify(project, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${familyName || '以苒纪家谱'}_工程数据.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        notify('工程 JSON 数据已成功导出下载！', 'success');
         onClose();
       }
     } catch (err) {
