@@ -171,7 +171,14 @@ export default function SaveAsDialog({
     <div className="saveas-overlay" onClick={() => !isExporting && onClose()}>
       <div className="saveas-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="saveas-header">
-          <div className="saveas-title">另存为</div>
+          <div className="saveas-title-group" style={{ display: 'flex', alignItems: 'baseline', gap: '10px', minWidth: 0 }}>
+            <div className="saveas-title">另存为</div>
+            {!isTauri() && (
+              <span className="saveas-header-web-hint" style={{ fontSize: '12px', color: 'var(--color-text-tertiary)', fontWeight: 'normal' }}>
+                浏览器模式：点击保存后会下载到系统的「下载」文件夹
+              </span>
+            )}
+          </div>
           <div className="saveas-subtitle">{familyName}</div>
         </div>
         <div className="saveas-body">
@@ -213,15 +220,11 @@ export default function SaveAsDialog({
             <div className="saveas-detail-header">
               <div className="saveas-detail-title">{detail.title}</div>
               <div className="saveas-detail-desc">{detail.desc}</div>
-              {!isTauri() && category === 'yrj' ? (
+              {!isTauri() && category === 'yrj' && (
                 <div className="saveas-web-hint" style={{ color: 'var(--color-warning, #d97706)', marginTop: '8px' }}>
                   ⚠️ 网页版受浏览器沙箱限制，无法打包导出包含本地磁盘媒体的 YRJ 档案。如需完整归档与媒体管理，请使用桌面版客户端，或导出「JSON 数据」。
                 </div>
-              ) : !isTauri() ? (
-                <div className="saveas-web-hint">
-                  浏览器模式：点击保存后会下载到系统的「下载」文件夹。
-                </div>
-              ) : null}
+              )}
             </div>
 
             {isImage && (
