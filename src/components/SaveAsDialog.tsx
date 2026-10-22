@@ -185,29 +185,22 @@ export default function SaveAsDialog({
           {/* 左侧：类别选择 */}
           <nav className="saveas-category-list">
             {CATEGORY_OPTIONS.map((opt) => {
-              const isDisabled = opt.id === 'yrj' && !isTauri();
+              const isWebYrj = opt.id === 'yrj' && !isTauri();
               return (
                 <button
                   key={opt.id}
                   type="button"
                   className={`saveas-category-item ${category === opt.id ? 'selected' : ''}`}
-                  onClick={() => !isDisabled && setCategory(opt.id)}
-                  disabled={isExporting || isDisabled}
-                  style={isDisabled ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
-                  title={isDisabled ? '网页版不支持导出 YRJ 档案，请使用桌面版客户端' : undefined}
+                  onClick={() => setCategory(opt.id)}
+                  disabled={isExporting}
+                  style={isWebYrj && category !== opt.id ? { opacity: 0.6 } : undefined}
+                  title={isWebYrj ? '仅桌面版客户端支持导出 YRJ 档案' : undefined}
                 >
                   <span className="saveas-category-icon">{opt.icon}</span>
                   <span className="saveas-category-info">
-                    <span className="saveas-category-title">
-                      {opt.title}
-                      {isDisabled && (
-                        <span style={{ fontSize: '11px', marginLeft: '6px', color: 'var(--color-text-tertiary)' }}>
-                          (网页版不可用)
-                        </span>
-                      )}
-                    </span>
+                    <span className="saveas-category-title">{opt.title}</span>
                     <span className="saveas-category-brief">
-                      {isDisabled ? '仅桌面版客户端支持' : opt.brief}
+                      {isWebYrj ? '仅桌面版客户端支持' : opt.brief}
                     </span>
                   </span>
                 </button>
@@ -286,6 +279,7 @@ export default function SaveAsDialog({
                 className="btn btn-primary btn-sm saveas-confirm-btn"
                 onClick={handleConfirm}
                 disabled={isExporting || (category === 'yrj' && !isTauri())}
+                title={category === 'yrj' && !isTauri() ? '网页版受浏览器沙箱限制，不支持导出 YRJ 档案，请使用桌面版客户端' : undefined}
               >
                 {isExporting
                   ? '⏳ 导出中…'
