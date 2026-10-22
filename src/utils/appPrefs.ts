@@ -20,6 +20,8 @@ export interface AppPrefs {
   defaultSaveDir?: string;
   /** 家谱树节点布局模式；未设置视为 classic（经典模式，原版行为） */
   treeLayoutMode?: TreeLayoutMode;
+  /** 已点击体验过示例家谱的软件版本号。为空或不等于当前版本时，首页显示「示例家谱」按钮 */
+  sampleDismissedVersion?: string;
 }
 
 export function getAppPrefs(): AppPrefs {
@@ -81,4 +83,24 @@ export function setTreeLayoutMode(mode: TreeLayoutMode) {
   } catch {
     // 环境不支持 CustomEvent 时忽略
   }
+}
+
+/** 判断首页是否应该显示「示例家谱」按钮：首次未点击过，或安装了新版本时显示 */
+export function shouldShowSampleEntry(currentAppVersion: string): boolean {
+  const prefs = getAppPrefs();
+  return prefs.sampleDismissedVersion !== currentAppVersion;
+}
+
+/** 标记当前版本的示例家谱已被点击过，之后在本版本下不再在首页显示 */
+export function dismissSampleEntry(currentAppVersion: string) {
+  const prefs = getAppPrefs();
+  prefs.sampleDismissedVersion = currentAppVersion;
+  saveAppPrefs(prefs);
+}
+
+/** 在设置页重置：允许在首页再次显示示例家谱按钮 */
+export function resetSampleEntry() {
+  const prefs = getAppPrefs();
+  delete prefs.sampleDismissedVersion;
+  saveAppPrefs(prefs);
 }

@@ -757,7 +757,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
 
     const settings = getSyncSettings();
     if (!settings.enabled) {
-      throw new Error('请先在「家谱设置 → 多设备同步」中勾选「启用云同步」');
+      throw new Error('请先在「软件设置 → 云同步」中勾选「启用云同步」');
     }
     if (!isSyncConfigured(settings)) {
       throw new Error('请先在「多设备同步」中填写 WebDAV 地址与账号');

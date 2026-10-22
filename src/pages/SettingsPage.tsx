@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFamilyStore } from '../store/familyStore';
 import { openDevtools, isTauri, selectFilePathForSaveZip, writeBinaryFile, getAppLogs, openUrl, selectProjectParentDir, moveProjectWorkspace, openInExplorer, webdavTest, webdavRemoteMeta, webdavListProjects, type RemoteSyncMeta, type RemoteProject } from '../utils/tauri';
-import { getDefaultSaveDir, setDefaultSaveDir, getTreeLayoutMode, setTreeLayoutMode, type TreeLayoutMode } from '../utils/appPrefs';
+import { getDefaultSaveDir, setDefaultSaveDir, getTreeLayoutMode, setTreeLayoutMode, resetSampleEntry, type TreeLayoutMode } from '../utils/appPrefs';
 import {
   getSyncSettings,
   saveSyncSettings,
@@ -22,6 +22,8 @@ export default function SettingsPage() {
   const navigate = useNavigate();
   const { project, updateMeta, changeProjectPassword, isAnonymized, toggleAnonymization, currentFilePath, relocateProject, syncPushToCloud, syncPullFromCloud, restoreProjectFromCloud } = useFamilyStore();
 
+  type SettingsTab = 'basic' | 'tree' | 'storage' | 'sync' | 'security' | 'about';
+  const [activeTab, setActiveTab] = useState<SettingsTab>('basic');
   const [familyName, setFamilyName] = useState(project?.meta.familyName || '');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -347,10 +349,20 @@ export default function SettingsPage() {
 
   // ==================== 档案存储相关 ====================
 
+  const formatWinPath = (p: string) => {
+    if (!p) return '';
+    // Windows 环境或带盘符的绝对路径，统一转为反斜杠 \
+    if (/^[a-zA-Z]:[/\\]/.test(p) || (typeof navigator !== 'undefined' && navigator.userAgent.includes('Windows'))) {
+      return p.replace(/[/\\]+/g, '\\');
+    }
+    return p;
+  };
+
   const handleCopyPath = async (path: string) => {
     if (!path) return;
     try {
-      await navigator.clipboard.writeText(path);
+      const normalized = formatWinPath(path);
+      await navigator.clipboard.writeText(normalized);
       showToast('路径已复制到剪贴板', 'success');
     } catch {
       showToast('复制失败，请手动选中路径复制', 'error');
@@ -642,34 +654,109 @@ export default function SettingsPage() {
 
       {/* ---- 页面主体 ---- */}
       <div className="settings-header">
-        <h2>⚙️ 家谱设置</h2>
+        <h2>⚙️ 软件设置</h2>
       </div>
 
-      <form onSubmit={handleSave} className="settings-form">
+      <div className="settings-layout">
+        {/* 左侧分类导航菜单 */}
+        <aside className="settings-sidebar">
+          <button
+            type="button"
+            className={`settings-nav-item ${activeTab === 'basic' ? 'active' : ''}`}
+            onClick={() => setActiveTab('basic')}
+          >
+            <span className="settings-nav-icon">🏷️</span>
+            <span className="settings-nav-label">基本设置</span>
+          </button>
+          <button
+            type="button"
+            className={`settings-nav-item ${activeTab === 'tree' ? 'active' : ''}`}
+            onClick={() => setActiveTab('tree')}
+          >
+            <span className="settings-nav-icon">🌳</span>
+            <span className="settings-nav-label">家谱树显示</span>
+          </button>
+          <button
+            type="button"
+            className={`settings-nav-item ${activeTab === 'storage' ? 'active' : ''}`}
+            onClick={() => setActiveTab('storage')}
+          >
+            <span className="settings-nav-icon">📁</span>
+            <span className="settings-nav-label">档案存储</span>
+          </button>
+          <button
+            type="button"
+            className={`settings-nav-item ${activeTab === 'sync' ? 'active' : ''}`}
+            onClick={() => setActiveTab('sync')}
+          >
+            <span className="settings-nav-icon">☁️</span>
+            <span className="settings-nav-label">云同步</span>
+          </button>
+          <button
+            type="button"
+            className={`settings-nav-item ${activeTab === 'security' ? 'active' : ''}`}
+            onClick={() => setActiveTab('security')}
+          >
+            <span className="settings-nav-icon">🔒</span>
+            <span className="settings-nav-label">安全与密码</span>
+          </button>
+          <button
+            type="button"
+            className={`settings-nav-item ${activeTab === 'about' ? 'active' : ''}`}
+            onClick={() => setActiveTab('about')}
+          >
+            <span className="settings-nav-icon">ℹ️</span>
+            <span className="settings-nav-label">关于与支持</span>
+          </button>
+        </aside>
+
+        {/* 右侧配置面板 */}
+        <div className="settings-content">
+          <form onSubmit={handleSave} className="settings-form">
         {/* 基本信息 */}
-        <div className="settings-section">
-          <div className="settings-section-title settings-section-title--with-badge">
-            <span>基本信息</span>
-            <span className="settings-data-version" title="家谱数据结构版本，打开旧档案时会自动升级">
-              当前家谱数据版本：{project?.meta.version || '—'}
-            </span>
+        {activeTab === 'basic' && (
+          <div className="settings-section">
+            <div className="settings-section-title settings-section-title--with-badge">
+              <span>基本信息</span>
+              <span className="settings-data-version" title="家谱数据结构版本，打开旧档案时会自动升级">
+                当前家谱数据版本：{project?.meta.version || '—'}
+              </span>
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="familyName">家谱名称</label>
+              <input
+                id="familyName"
+                type="text"
+                className="form-input"
+                value={familyName}
+                onChange={(e) => setFamilyName(e.target.value)}
+                placeholder="请输入家谱名称"
+                maxLength={50}
+              />
+            </div>
+
+            <div className="form-group" style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px dashed var(--color-border-light)' }}>
+              <label className="form-label">示例家谱入口</label>
+              <p className="dev-tool-desc" style={{ marginBottom: '12px' }}>
+                默认情况下，在首页点击体验过示例家谱后，入口将自动隐藏。若需要再次在首页查看，可点击下方按钮重置。
+              </p>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  resetSampleEntry();
+                  showToast('已重置！返回首页将再次显示「示例家谱」按钮', 'success');
+                }}
+              >
+                📖 在首页重新显示示例家谱入口
+              </button>
+            </div>
           </div>
-          <div className="form-group">
-            <label className="form-label" htmlFor="familyName">家谱名称</label>
-            <input
-              id="familyName"
-              type="text"
-              className="form-input"
-              value={familyName}
-              onChange={(e) => setFamilyName(e.target.value)}
-              placeholder="请输入家谱名称"
-              maxLength={50}
-            />
-          </div>
-        </div>
+        )}
 
         {/* 家谱树显示模式 */}
-        <div className="settings-section">
+        {activeTab === 'tree' && (
+          <div className="settings-section">
           <div className="settings-section-title">家谱树显示</div>
           <p className="dev-tool-desc" style={{ marginBottom: '16px' }}>
             选择家谱树成员卡片的排版方式。切换后回到家谱树页面即可生效，仅影响显示，不改动任何人物数据。
@@ -711,11 +798,12 @@ export default function SettingsPage() {
               </span>
             </label>
           </div>
-
         </div>
+        )}
 
         {/* 档案存储 */}
-        <div className="settings-section">
+        {activeTab === 'storage' && (
+          <div className="settings-section">
           <div className="settings-section-title">档案存储</div>
           <p className="dev-tool-desc" style={{ marginBottom: '16px' }}>
             家谱以文件夹形式实时保存（内含 project.json 与 media 照片），修改后自动写入，无需手动保存。
@@ -724,7 +812,7 @@ export default function SettingsPage() {
           <div className="form-group">
             <label className="form-label">当前档案位置</label>
             <div className="path-display" title={currentFilePath || ''}>
-              {currentFilePath || (isTauri() ? '尚未保存到本地' : '浏览器模式：数据保存在浏览器本地存储中')}
+              {currentFilePath ? formatWinPath(currentFilePath) : (isTauri() ? '尚未保存到本地' : '浏览器模式：数据保存在浏览器本地存储中')}
             </div>
             <div className="path-actions">
               <button
@@ -750,7 +838,7 @@ export default function SettingsPage() {
           <div className="form-group">
             <label className="form-label">新建档案的默认保存位置</label>
             <div className="path-display" title={defaultSaveDir || ''}>
-              {defaultSaveDir || '未设置（每次新建档案时弹出选择框）'}
+              {defaultSaveDir ? formatWinPath(defaultSaveDir) : '未设置（每次新建档案时弹出选择框）'}
             </div>
             <div className="path-actions">
               <button
@@ -799,9 +887,11 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+        )}
 
         {/* 多设备同步 */}
-        <div className="settings-section" id="sync-section">
+        {activeTab === 'sync' && (
+          <div className="settings-section" id="sync-section">
           <div className="settings-section-title">多设备同步</div>
           <p className="dev-tool-desc" style={{ marginBottom: '14px' }}>
             把档案同步到支持 WebDAV 的网盘（坚果云 / InfiniCLOUD / 自建 Nextcloud），两台电脑共用同一份云端备份。
@@ -1020,9 +1110,11 @@ export default function SettingsPage() {
             )}
           </div>
         </div>
+        )}
 
         {/* 安全与密码 */}
-        <div className="settings-section">
+        {activeTab === 'security' && (
+          <div className="settings-section">
           <div className="settings-section-title">安全与密码</div>
 
           <div className="password-status-bar">
@@ -1124,6 +1216,7 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
+        )}
 
         {/* 内联错误提示 —— 仅保留给校验错误；成功类提示已由 Toast 接管 */}
         {message && (
@@ -1132,8 +1225,10 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* 开发者 */}
-        <div className="settings-section">
+        {/* 关于与支持 (含开发者与版本) */}
+        {activeTab === 'about' && (
+          <>
+            <div className="settings-section">
           <div className="settings-section-title">开发者</div>
           <div className="dev-tools-grid">
             <div className="dev-tool-item">
@@ -1194,6 +1289,9 @@ export default function SettingsPage() {
           </div>
         </div>
 
+          </>
+        )}
+
         {/* 底部提交 */}
         <div className="settings-footer">
           <button
@@ -1209,7 +1307,9 @@ export default function SettingsPage() {
             💾 保存设置
           </button>
         </div>
-      </form>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

@@ -119,11 +119,11 @@ export async function checkMediaFilesExist(paths: string[]): Promise<boolean[]> 
   return api.invoke<boolean[]>('check_media_files_exist', { paths });
 }
 
-/** 释放随安装包发布的示例家谱，返回其工作区路径 */
-export async function installSampleWorkspace(): Promise<string> {
+/** 释放随安装包发布的示例家谱，返回其工作区路径。若 force 为 true 则强制覆盖 */
+export async function installSampleWorkspace(force = false): Promise<string> {
   const api = await getTauriApi();
   if (!api) throw new Error('未运行在 Tauri 环境中');
-  return api.invoke<string>('install_sample_workspace');
+  return api.invoke<string>('install_sample_workspace', { force });
 }
 
 /**

@@ -69,10 +69,11 @@ fn open_in_explorer(path: String) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     let result = {
+        let win_path = path.replace('/', "\\");
         let arg = if p.is_dir() {
-            path.clone()
+            win_path
         } else {
-            format!("/select,{}", path)
+            format!("/select,{}", win_path)
         };
         std::process::Command::new("explorer").arg(arg).spawn().map(|_| ())
     };
@@ -187,15 +188,24 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::
     Ok(())
 }
 
-/// 把随安装包发布的示例家谱释放到应用数据目录（可读写），已存在则不覆盖，返回工作区路径
+/// 读取 project.json 中的 meta.updatedAt 字段（用于比对版本）
+fn get_project_updated_at(path: &std::path::Path) -> Option<String> {
+    let content = fs::read_to_string(path).ok()?;
+    let val: serde_json::Value = serde_json::from_str(&content).ok()?;
+    val.get("meta")?.get("updatedAt")?.as_str().map(|s| s.to_string())
+}
+
+/// 把随安装包发布的示例家谱释放到应用数据目录（可读写）。
+/// 如果目标已存在，但安装包中的示例家谱更新（updatedAt 不同）或 force 为 true，则自动覆盖更新。
 #[tauri::command]
-fn install_sample_workspace(app: tauri::AppHandle) -> Result<String, String> {
+fn install_sample_workspace(app: tauri::AppHandle, force: Option<bool>) -> Result<String, String> {
     let resource_dir = app
         .path()
         .resource_dir()
         .map_err(|e| format!("无法定位资源目录: {}", e))?;
     let src = resource_dir.join("sample-family");
-    if !src.join("project.json").is_file() {
+    let src_project = src.join("project.json");
+    if !src_project.is_file() {
         return Err("安装包中未找到示例家谱".to_string());
     }
     let dest = app
@@ -204,7 +214,20 @@ fn install_sample_workspace(app: tauri::AppHandle) -> Result<String, String> {
         .map_err(|e| format!("无法定位应用数据目录: {}", e))?
         .join("samples")
         .join("以苒纪示例家谱");
-    if !dest.join("project.json").is_file() {
+    let dest_project = dest.join("project.json");
+
+    let should_copy = if force.unwrap_or(false) || !dest_project.is_file() {
+        true
+    } else {
+        let src_updated = get_project_updated_at(&src_project);
+        let dest_updated = get_project_updated_at(&dest_project);
+        src_updated.is_some() && src_updated != dest_updated
+    };
+
+    if should_copy {
+        if dest.exists() {
+            let _ = fs::remove_dir_all(&dest);
+        }
         copy_dir_recursive(&src, &dest).map_err(|e| format!("释放示例家谱失败: {}", e))?;
     }
     Ok(dest.to_string_lossy().replace('\\', "/"))

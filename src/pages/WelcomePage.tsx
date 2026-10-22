@@ -10,7 +10,7 @@ import {
   openUrl,
   installSampleWorkspace,
 } from '../utils/tauri';
-import { getDefaultSaveDir } from '../utils/appPrefs';
+import { getDefaultSaveDir, shouldShowSampleEntry, dismissSampleEntry } from '../utils/appPrefs';
 import './WelcomePage.css';
 
 export default function WelcomePage() {
@@ -41,6 +41,9 @@ export default function WelcomePage() {
   // 密码确认对话框（创建时）
   const [showPwdConfirmDialog, setShowPwdConfirmDialog] = useState(false);
   const [pendingCreatePwd, setPendingCreatePwd] = useState('');
+
+  // 是否在首页显示「示例家谱」按钮（首次未点过，或升级新版本后显示）
+  const [showSampleButton, setShowSampleButton] = useState(() => shouldShowSampleEntry(__APP_VERSION__));
 
   // 自定义对话框相关
   const [dialog, setDialog] = useState<{
@@ -218,6 +221,8 @@ export default function WelcomePage() {
   // 打开随软件发布的示例家谱
   const handleOpenSample = async () => {
     try {
+      dismissSampleEntry(__APP_VERSION__);
+      setShowSampleButton(false);
       const path = await installSampleWorkspace();
       const success = await openProjectFromFile(path);
       if (success) navigate('/tree');
@@ -366,14 +371,16 @@ export default function WelcomePage() {
                 <span>📜</span>
                 <span>打开文件</span>
               </button>
-              <button
-                className="welcome-btn-open"
-                onClick={handleOpenSample}
-                style={{ width: '220px', display: 'inline-flex', justifyContent: 'center' }}
-              >
-                <span>📖</span>
-                <span>示例家谱</span>
-              </button>
+              {showSampleButton && (
+                <button
+                  className="welcome-btn-open"
+                  onClick={handleOpenSample}
+                  style={{ width: '220px', display: 'inline-flex', justifyContent: 'center' }}
+                >
+                  <span>📖</span>
+                  <span>示例家谱</span>
+                </button>
+              )}
             </>
           ) : (
             <>

@@ -179,7 +179,7 @@ export default function MainLayout() {
             }
           >
             <span className="nav-icon">⚙️</span>
-            <span>家谱设置</span>
+            <span>软件设置</span>
           </NavLink>
 
           <hr className="divider" style={{ margin: '8px 12px' }} />
