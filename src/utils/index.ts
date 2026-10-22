@@ -2,6 +2,7 @@
 
 import { Solar, Lunar } from 'lunar-javascript';
 import type { LunarDate, Person, FamilyProject } from '../types';
+import { getAdoptiveFathers, getAdoptiveMothers } from '../types';
 
 // ==================== 中文数字工具 ====================
 
@@ -377,16 +378,18 @@ export function getSiblingRank(
 
   const father = person.relations.father;
   const mother = person.relations.mother;
-  const adoptiveFather = person.relations.adoptiveFather;
-  const adoptiveMother = person.relations.adoptiveMother;
+  const adoptiveFathers = getAdoptiveFathers(person.relations);
+  const adoptiveMothers = getAdoptiveMothers(person.relations);
 
   // 1. 找出包含主体和所有手足在内的集合
   const allSiblings = Object.values(persons).filter((p: any) => {
     const shareFather = father && p.relations.father === father;
     const shareMother = mother && p.relations.mother === mother;
-    const shareAdoptiveFather = adoptiveFather && p.relations.adoptiveFather === adoptiveFather;
-    const shareAdoptiveMother = adoptiveMother && p.relations.adoptiveMother === adoptiveMother;
-    
+    const shareAdoptiveFather =
+      adoptiveFathers.length > 0 && getAdoptiveFathers(p.relations).some((id) => adoptiveFathers.includes(id));
+    const shareAdoptiveMother =
+      adoptiveMothers.length > 0 && getAdoptiveMothers(p.relations).some((id) => adoptiveMothers.includes(id));
+
     return p.id === personId || p.id === selfId || shareFather || shareMother || shareAdoptiveFather || shareAdoptiveMother;
   });
 

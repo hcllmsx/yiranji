@@ -11,12 +11,15 @@ import type {
 import {
   createDefaultPerson,
   createDefaultMeta as makeDefaultMeta,
+  createAdoptiveGroupId,
+  removePersonFromAdoptiveGroups,
 } from '../types';
 import { sha256, generateAnonymizedNames } from '../utils';
 import {
   isTauri,
   selectFilePathForSave,
   saveProjectJson,
+  backupProjectJson,
   unpackYrj,
   loadProjectJson,
   packToYrj,
@@ -34,6 +37,7 @@ import {
   rebaseMediaPathsToWorkspace,
 } from '../utils/projectPortable';
 import { getSyncSettings, isSyncConfigured, remoteDirFor, ensureSyncKey } from '../utils/cloudSync';
+import { migrateProjectData, type MigrationReport } from '../utils/dataMigration';
 
 // ==================== 持久化工具 ====================
 
@@ -66,22 +70,7 @@ function loadProject(projectId: string): FamilyProject | null {
   }
 }
 
-/** 自动升级旧版养父母数据结构为新版数组格式 */
-function migrateProjectData(project: FamilyProject): FamilyProject {
-  if (!project || !project.persons) return project;
-  Object.values(project.persons).forEach((p) => {
-    if (!p.relations) {
-      p.relations = { spouses: [], children: [] };
-    }
-    if (p.relations.adoptiveFather && (!p.relations.adoptiveFathers || p.relations.adoptiveFathers.length === 0)) {
-      p.relations.adoptiveFathers = [p.relations.adoptiveFather];
-    }
-    if (p.relations.adoptiveMother && (!p.relations.adoptiveMothers || p.relations.adoptiveMothers.length === 0)) {
-      p.relations.adoptiveMothers = [p.relations.adoptiveMother];
-    }
-  });
-  return project;
-}
+/** 自动升级旧版养父母数据结构为新版数组格式（已并入 dataMigration，保留入口注释） */
 
 function getRecentProjects(): RecentProject[] {
   const raw = localStorage.getItem(RECENT_KEY);
@@ -159,6 +148,9 @@ interface FamilyStore {
   recentProjects: RecentProject[];
   currentFilePath: string | null;
   projectPassword: string | null;
+  /** 最近一次打开旧档案时的数据迁移报告（有断链才非空） */
+  dataMigrationReport: MigrationReport | null;
+  clearDataMigrationReport: () => void;
 
   // 开发者工具状态
   isAnonymized: boolean;
@@ -241,8 +233,11 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
   recentProjects: [],
   currentFilePath: null,
   projectPassword: null,
+  dataMigrationReport: null,
   isAnonymized: false,
   anonymizedNames: {},
+
+  clearDataMigrationReport: () => set({ dataMigrationReport: null }),
 
   // ==================== 项目操作 ====================
 
@@ -319,7 +314,21 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     // 该方法一般用于 Web 版 localStorage 的历史文件
     const rawProject = loadProject(projectId);
     if (!rawProject) return false;
-    const project = migrateProjectData(rawProject);
+    // 迁移前的快照：断链时才写入 localStorage 备份
+    const snapshot = JSON.stringify(rawProject);
+    const migration = migrateProjectData(rawProject);
+    const project = migration.project;
+    const report = migration.report;
+    if (report.brokenRelations.length > 0) {
+      try {
+        localStorage.setItem(`${STORAGE_PREFIX}${projectId}_bak_v${report.fromVersion}`, snapshot);
+      } catch {
+        // 存储空间不足时不影响打开
+      }
+    }
+    if (report.versionBumped) {
+      saveProject(projectId, project);
+    }
 
     // 更新最近项目
     const recent = getRecentProjects();
@@ -339,6 +348,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
       project,
       isDirty: false,
       recentProjects: filtered.slice(0, 10),
+      dataMigrationReport: report.brokenRelations.length > 0 ? report : null,
     });
     return true;
   },
@@ -371,7 +381,9 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
       // 2. 直接以高速明文读取加载工作区下的 project.json 属性
       const json = await loadProjectJson(workspacePath);
       const rawProject = JSON.parse(json) as FamilyProject;
-      let project = migrateProjectData(rawProject);
+      const migration = migrateProjectData(rawProject);
+      let project = migration.project;
+      const migrationReport = migration.report;
       // 从外部文件/文件夹打开时，总生成新的 projectId，避免与源项目或其他历史记录冲突
       const projectId = uuidv4();
 
@@ -392,9 +404,6 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
       project = rebaseMediaPathsToWorkspace(project, workspacePath, () => {
         rebasedCount += 1;
       });
-      if (rebasedCount > 0) {
-        await saveProjectJson(workspacePath, JSON.stringify(project, null, 2));
-      }
 
       // 兼容旧数据 / 脱敏数据中媒体数组可能缺失的情况
       Object.values(project.persons).forEach((person) => {
@@ -402,6 +411,18 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
         person.audioFiles = person.audioFiles || [];
         person.videoFiles = person.videoFiles || [];
       });
+
+      // 4.5 数据迁移备份：先在 project.json 旁复制一份旧版本快照，再落盘新数据
+      if (migrationReport.brokenRelations.length > 0) {
+        try {
+          migrationReport.backupPath = await backupProjectJson(workspacePath, migrationReport.fromVersion);
+        } catch (e) {
+          console.error('迁移前备份 project.json 失败:', e);
+        }
+      }
+      if (rebasedCount > 0 || migrationReport.versionBumped) {
+        await saveProjectJson(workspacePath, JSON.stringify(project, null, 2));
+      }
 
       // 更新最近项目，绑定解压后的工作文件夹路径
       const recent = getRecentProjects();
@@ -422,6 +443,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
         project,
         isDirty: false,
         recentProjects: filtered.slice(0, 10),
+        dataMigrationReport: migrationReport.brokenRelations.length > 0 ? migrationReport : null,
       });
       return true;
     } catch (err) {
@@ -431,7 +453,9 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
   },
 
   importProjectFromJSON: async (rawProject: FamilyProject) => {
-    const project = migrateProjectData(rawProject);
+    const migration = migrateProjectData(rawProject);
+    const project = migration.project;
+    const report = migration.report;
     // 导入 JSON 时总生成新的 projectId，避免与已有项目冲突
     const projectId = uuidv4();
     const now = new Date().toISOString();
@@ -455,6 +479,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
       project,
       isDirty: false,
       recentProjects: filtered.slice(0, 10),
+      dataMigrationReport: report.brokenRelations.length > 0 ? report : null,
     });
 
     return projectId;
@@ -495,6 +520,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
       isDirty: false,
       currentFilePath: null,
       projectPassword: null,
+      dataMigrationReport: null,
     });
   },
 
@@ -625,7 +651,9 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     if (!currentFilePath || !isTauri()) return false;
 
     const json = await loadProjectJson(currentFilePath);
-    let project = migrateProjectData(JSON.parse(json) as FamilyProject);
+    const migration = migrateProjectData(JSON.parse(json) as FamilyProject);
+    let project = migration.project;
+    const migrationReport = migration.report;
     // 云端下来的档案，媒体路径是另一台电脑的绝对路径 → 重新指向本机 media/
     project = rebaseMediaPathsToWorkspace(project, currentFilePath);
     Object.values(project.persons || {}).forEach((person) => {
@@ -634,8 +662,20 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
       person.videoFiles = person.videoFiles || [];
     });
 
+    if (migrationReport.brokenRelations.length > 0) {
+      try {
+        migrationReport.backupPath = await backupProjectJson(currentFilePath, migrationReport.fromVersion);
+      } catch (e) {
+        console.error('迁移前备份 project.json 失败:', e);
+      }
+    }
+
     await saveProjectJson(currentFilePath, JSON.stringify(project, null, 2));
-    set({ project, isDirty: false });
+    set({
+      project,
+      isDirty: false,
+      dataMigrationReport: migrationReport.brokenRelations.length > 0 ? migrationReport : null,
+    });
     return true;
   },
 
@@ -962,6 +1002,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
       if (r.adoptiveMother === id) r.adoptiveMother = undefined;
       if (r.adoptiveFathers) r.adoptiveFathers = r.adoptiveFathers.filter(fid => fid !== id);
       if (r.adoptiveMothers) r.adoptiveMothers = r.adoptiveMothers.filter(mid => mid !== id);
+      r.adoptiveParents = removePersonFromAdoptiveGroups(r.adoptiveParents, id);
       if (r.stepFather === id) r.stepFather = undefined;
       if (r.stepMother === id) r.stepMother = undefined;
       r.spouses = r.spouses.filter((s) => s.id !== id);
@@ -1047,29 +1088,24 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     const person = { ...project.persons[personId] };
     const relations = { ...person.relations };
 
-    const validKeys = ['father', 'mother', 'adoptiveFather', 'adoptiveMother', 'stepFather', 'stepMother'];
+    const validKeys = ['father', 'mother', 'stepFather', 'stepMother'];
     if (validKeys.includes(relationType)) {
       (relations as any)[relationType] = targetId ?? undefined;
     }
 
-    // 支持数组形式的养父母
-    if (relationType === 'adoptiveFathers' && targetId) {
-      relations.adoptiveFathers = relations.adoptiveFathers || [];
-      if (!relations.adoptiveFathers.includes(targetId)) {
-        relations.adoptiveFathers = [...relations.adoptiveFathers, targetId];
-      }
-      // 同步设置旧版单值字段（兼容）
-      if (!relations.adoptiveFather) {
-        relations.adoptiveFather = targetId;
-      }
-    }
-    if (relationType === 'adoptiveMothers' && targetId) {
-      relations.adoptiveMothers = relations.adoptiveMothers || [];
-      if (!relations.adoptiveMothers.includes(targetId)) {
-        relations.adoptiveMothers = [...relations.adoptiveMothers, targetId];
-      }
-      if (!relations.adoptiveMother) {
-        relations.adoptiveMother = targetId;
+    // 养父母走分组结构：已在任何一组里则忽略，否则补进第一组空缺槽位（没有组就新建一组）
+    if ((relationType === 'adoptiveFather' || relationType === 'adoptiveMother') && targetId) {
+      const groups = [...(relations.adoptiveParents || [])];
+      const occupied = groups.some((group) => group.fatherId === targetId || group.motherId === targetId);
+      if (!occupied) {
+        const slotKey = relationType === 'adoptiveFather' ? 'fatherId' : 'motherId';
+        const emptyIndex = groups.findIndex((group) => !group[slotKey]);
+        if (emptyIndex >= 0) {
+          groups[emptyIndex] = { ...groups[emptyIndex], [slotKey]: targetId };
+        } else {
+          groups.push({ id: createAdoptiveGroupId(), [slotKey]: targetId });
+        }
+        relations.adoptiveParents = groups;
       }
     }
 

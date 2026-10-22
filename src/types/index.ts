@@ -1,5 +1,14 @@
 // 以苒纪 — 核心类型定义
 
+// ==================== 数据版本 ====================
+
+/**
+ * 家谱数据结构版本（schema version，不是软件版本）。
+ * 旧档案打开时会按这个版本号自动升级并清理不合规关系，
+ * 设置页「基本信息」里展示给用户看的就是它。
+ */
+export const CURRENT_DATA_VERSION = '2.1.0';
+
 // ==================== 基础类型 ====================
 
 export type Gender = 'male' | 'female';
@@ -67,14 +76,25 @@ export interface ChildRelation {
   type: ChildRelationType;
 }
 
+/**
+ * 养父母分组：一组养父母 = 养父 + 养母，任一方可为空（单亲收养）。
+ * 两位养父 / 两位养母通过多组实现，性别不限。
+ */
+export interface AdoptiveParentGroup {
+  id: string;
+  fatherId?: string;
+  motherId?: string;
+}
+
 /** 人员关系集合 */
 export interface Relations {
   father?: string;
   mother?: string;
   adoptiveFather?: string;       // 单值（旧版兼容）
   adoptiveMother?: string;       // 单值（旧版兼容）
-  adoptiveFathers?: string[];    // 多养父（新版，优先使用）
-  adoptiveMothers?: string[];    // 多养母（新版，优先使用）
+  adoptiveFathers?: string[];    // 多养父（旧版兼容，新档案不再写入）
+  adoptiveMothers?: string[];    // 多养母（旧版兼容，新档案不再写入）
+  adoptiveParents?: AdoptiveParentGroup[];  // 养父母分组（新版，存在即权威）
   stepFather?: string;
   stepMother?: string;
   spouses: SpouseRelation[];
@@ -192,7 +212,7 @@ export function createDefaultPerson(surname: string): Omit<Person, 'id' | 'creat
 
 export function createDefaultMeta(surname: string): Omit<FamilyMeta, 'createdAt' | 'updatedAt'> {
   return {
-    version: '1.0.0',
+    version: CURRENT_DATA_VERSION,
     familyName: `${surname}氏-以苒纪`,
     surname,
     hasPassword: false,
@@ -201,16 +221,75 @@ export function createDefaultMeta(surname: string): Omit<FamilyMeta, 'createdAt'
 
 // ==================== 养父母兼容工具 ====================
 
-/** 获取所有养父ID（兼容旧版单值和新版数组） */
-export function getAdoptiveFathers(relations: Relations): string[] {
-  if (relations.adoptiveFathers && relations.adoptiveFathers.length > 0) return relations.adoptiveFathers;
-  if (relations.adoptiveFather) return [relations.adoptiveFather];
-  return [];
+let adoptiveGroupSeq = 0;
+
+/** 生成养父母组的稳定 id（用于增删与 React key） */
+export function createAdoptiveGroupId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  adoptiveGroupSeq += 1;
+  return `ap-${Date.now()}-${adoptiveGroupSeq}`;
 }
 
-/** 获取所有养母ID（兼容旧版单值和新版数组） */
+/**
+ * 读取养父母分组。
+ * 新档案直接使用 adoptiveParents（即使为空数组也视为权威）；
+ * 旧档案没有该字段，按索引把 adoptiveFathers / adoptiveMothers 配成组
+ * ——旧界面是左右两列并排填写，用户通常是按行对应的。
+ */
+export function getAdoptiveGroups(relations: Relations): AdoptiveParentGroup[] {
+  if (relations.adoptiveParents) return relations.adoptiveParents;
+  const fathers = relations.adoptiveFathers?.length
+    ? relations.adoptiveFathers
+    : relations.adoptiveFather
+      ? [relations.adoptiveFather]
+      : [];
+  const mothers = relations.adoptiveMothers?.length
+    ? relations.adoptiveMothers
+    : relations.adoptiveMother
+      ? [relations.adoptiveMother]
+      : [];
+  const count = Math.max(fathers.length, mothers.length);
+  const groups: AdoptiveParentGroup[] = [];
+  for (let i = 0; i < count; i += 1) {
+    groups.push({
+      id: `legacy-${i}`,
+      fatherId: fathers[i] || undefined,
+      motherId: mothers[i] || undefined,
+    });
+  }
+  return groups;
+}
+
+/** 获取所有养父ID（新结构 + 旧版单值/数组兼容） */
+export function getAdoptiveFathers(relations: Relations): string[] {
+  return getAdoptiveGroups(relations)
+    .map((group) => group.fatherId)
+    .filter((id): id is string => Boolean(id));
+}
+
+/** 获取所有养母ID（新结构 + 旧版单值/数组兼容） */
 export function getAdoptiveMothers(relations: Relations): string[] {
-  if (relations.adoptiveMothers && relations.adoptiveMothers.length > 0) return relations.adoptiveMothers;
-  if (relations.adoptiveMother) return [relations.adoptiveMother];
-  return [];
+  return getAdoptiveGroups(relations)
+    .map((group) => group.motherId)
+    .filter((id): id is string => Boolean(id));
+}
+
+/**
+ * 从养父母分组中移除某人（删人 / 断关系时用）。
+ * 组内两方都空则整组消失。
+ */
+export function removePersonFromAdoptiveGroups(
+  groups: AdoptiveParentGroup[] | undefined,
+  personId: string
+): AdoptiveParentGroup[] | undefined {
+  if (!Array.isArray(groups)) return groups;
+  return groups
+    .map((group) => ({
+      ...group,
+      fatherId: group.fatherId === personId ? undefined : group.fatherId,
+      motherId: group.motherId === personId ? undefined : group.motherId,
+    }))
+    .filter((group) => Boolean(group.fatherId || group.motherId));
 }

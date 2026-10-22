@@ -16,6 +16,7 @@ import { convertLocalSrc, isTauri, saveMediaFile, deleteMediaFile } from '../uti
 import { lockBodyScroll } from '../utils/bodyScrollLock';
 import ImageViewer, { type ViewerImage } from '../components/ImageViewer';
 import type { Photo, VideoFile } from '../types';
+import { getAdoptiveFathers, getAdoptiveMothers } from '../types';
 import './PersonDetailPage.css';
 
 export default function PersonDetailPage() {
@@ -74,23 +75,28 @@ export default function PersonDetailPage() {
   const relations: { type: string; person: ReturnType<typeof getRelationPerson> }[] = [];
   if (person.relations.father) relations.push({ type: '父亲', person: getRelationPerson(person.relations.father) });
   if (person.relations.mother) relations.push({ type: '母亲', person: getRelationPerson(person.relations.mother) });
-  if (person.relations.adoptiveFather) relations.push({ type: '养父', person: getRelationPerson(person.relations.adoptiveFather) });
-  if (person.relations.adoptiveMother) relations.push({ type: '养母', person: getRelationPerson(person.relations.adoptiveMother) });
+  // 养父母可能有多组，逐人展示
+  getAdoptiveFathers(person.relations).forEach((afId) =>
+    relations.push({ type: '养父', person: getRelationPerson(afId) })
+  );
+  getAdoptiveMothers(person.relations).forEach((amId) =>
+    relations.push({ type: '养母', person: getRelationPerson(amId) })
+  );
   if (person.relations.stepFather) relations.push({ type: '继父', person: getRelationPerson(person.relations.stepFather) });
   if (person.relations.stepMother) relations.push({ type: '继母', person: getRelationPerson(person.relations.stepMother) });
 
   // 挂载计算好的手足兄弟姐妹，带上智能长幼排行称呼
   const f = person.relations.father;
   const m = person.relations.mother;
-  const af = person.relations.adoptiveFather;
-  const am = person.relations.adoptiveMother;
+  const afIds = getAdoptiveFathers(person.relations);
+  const amIds = getAdoptiveMothers(person.relations);
   const personsDict = Object.fromEntries(allPersons.map(ap => [ap.id, ap]));
   allPersons.forEach((p) => {
     if (p.id === person.id) return;
     const shareFather = f && p.relations.father === f;
     const shareMother = m && p.relations.mother === m;
-    const shareAdoptiveFather = af && p.relations.adoptiveFather === af;
-    const shareAdoptiveMother = am && p.relations.adoptiveMother === am;
+    const shareAdoptiveFather = afIds.some((afId) => getAdoptiveFathers(p.relations).includes(afId));
+    const shareAdoptiveMother = amIds.some((amId) => getAdoptiveMothers(p.relations).includes(amId));
     
     if (shareFather || shareMother || shareAdoptiveFather || shareAdoptiveMother) {
       const rankText = getSiblingRank(p.id, personsDict, person.id);
@@ -118,7 +124,7 @@ export default function PersonDetailPage() {
         childrenMap.set(p.id, 'biological');
       }
     }
-    if (p.relations.adoptiveFather === person.id || p.relations.adoptiveMother === person.id) {
+    if (getAdoptiveFathers(p.relations).includes(person.id) || getAdoptiveMothers(p.relations).includes(person.id)) {
       if (!childrenMap.has(p.id)) {
         childrenMap.set(p.id, 'adopted');
       }

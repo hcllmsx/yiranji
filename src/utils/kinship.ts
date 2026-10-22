@@ -1,6 +1,7 @@
 // 家谱称谓推导与关系路径查找
 // 设计依据《推导算法》：数据层只存 生父母/养父母/继父母/配偶/子女，其余称谓全部由路径推导。
 
+import { getAdoptiveFathers, getAdoptiveMothers } from '../types';
 import { compareSiblings, sortSiblings, type SiblingOrderMap } from './siblingOrder';
 
 // ==================== 路径步进类型 ====================
@@ -27,18 +28,6 @@ interface AdjEdge {
 
 // ==================== 有向图构建（5.1） ====================
 
-function collectAdoptiveFathers(r: any): string[] {
-  if (Array.isArray(r.adoptiveFathers) && r.adoptiveFathers.length > 0) return r.adoptiveFathers;
-  if (r.adoptiveFather) return [r.adoptiveFather];
-  return [];
-}
-
-function collectAdoptiveMothers(r: any): string[] {
-  if (Array.isArray(r.adoptiveMothers) && r.adoptiveMothers.length > 0) return r.adoptiveMothers;
-  if (r.adoptiveMother) return [r.adoptiveMother];
-  return [];
-}
-
 function buildAdjacency(persons: Record<string, any>): Map<string, AdjEdge[]> {
   const adj = new Map<string, AdjEdge[]>();
   const add = (from: string, to: string, step: KinStep, penalty: number) => {
@@ -64,11 +53,11 @@ function buildAdjacency(persons: Record<string, any>): Map<string, AdjEdge[]> {
     }
 
     // 养父母 / 继父母（penalty=3，生父母路径优先）
-    collectAdoptiveFathers(r).forEach((afId) => {
+    getAdoptiveFathers(r).forEach((afId) => {
       add(p.id, afId, 'AF', 3);
       add(afId, p.id, childStep, 3);
     });
-    collectAdoptiveMothers(r).forEach((amId) => {
+    getAdoptiveMothers(r).forEach((amId) => {
       add(p.id, amId, 'AM', 3);
       add(amId, p.id, childStep, 3);
     });
@@ -197,14 +186,15 @@ const CHINESE_RANK = ['大', '二', '三', '四', '五', '六', '七', '八', '�
 
 function collectParentKeys(r: any): string[] {
   if (!r) return [];
-  return [
+  const ids = [
     r.father,
     r.mother,
-    ...collectAdoptiveFathers(r),
-    ...collectAdoptiveMothers(r),
+    ...getAdoptiveFathers(r),
+    ...getAdoptiveMothers(r),
     r.stepFather,
     r.stepMother,
-  ].filter(Boolean);
+  ].filter(Boolean) as string[];
+  return Array.from(new Set(ids));
 }
 
 /** 共享父母的兄弟姐妹排行称呼 */

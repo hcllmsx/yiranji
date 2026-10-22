@@ -9,6 +9,7 @@ import { exportTreeGraphHtml } from '../utils/htmlGraphExport';
 import { waitTreeCanvasReady } from '../utils/exportUtils';
 import MediaImportProgress from './MediaImportProgress';
 import SaveAsDialog, { type NotifyFn } from './SaveAsDialog';
+import DataMigrationDialog from './DataMigrationDialog';
 import './MainLayout.css';
 
 /** 问题反馈表单地址 */
@@ -250,6 +251,9 @@ export default function MainLayout() {
 
       {/* 媒体文件导入进度浮层 */}
       <MediaImportProgress />
+
+      {/* 旧版档案升级提示（断过关系才会弹） */}
+      <DataMigrationDialog />
 
       {/* 另存为格式选择弹窗 */}
       <SaveAsDialog

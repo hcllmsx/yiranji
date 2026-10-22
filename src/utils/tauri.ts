@@ -140,6 +140,16 @@ export async function loadProjectJson(workspacePath: string): Promise<string> {
 }
 
 /**
+ * 数据迁移前备份：把 project.json 复制为同目录下的 project.bak-{label}.json
+ * 返回备份文件的绝对路径
+ */
+export async function backupProjectJson(workspacePath: string, label: string): Promise<string> {
+  const api = await getTauriApi();
+  if (!api) throw new Error('未运行在 Tauri 环境中');
+  return api.invoke<string>('backup_project_json', { workspacePath, label });
+}
+
+/**
  * 解码 Base64 头像照片并独立保存至工作区 media/ 目录下
  */
 export async function saveMediaFile(workspacePath: string, filename: string, base64Data: string): Promise<void> {

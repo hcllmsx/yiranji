@@ -220,6 +220,43 @@ fn save_project_json(workspace_path: String, json_content: String) -> Result<(),
     Ok(())
 }
 
+/// 数据迁移前备份：把 project.json 复制为同目录下的 project.bak-{label}.json
+/// 同名文件已存在时自动追加序号，返回备份文件的绝对路径
+#[tauri::command]
+fn backup_project_json(workspace_path: String, label: String) -> Result<String, String> {
+    let dir = PathBuf::from(&workspace_path);
+    let source = dir.join("project.json");
+    if !source.is_file() {
+        return Err(format!("工作区里没有 project.json：{}", source.to_string_lossy()));
+    }
+
+    // 版本号只保留字母数字 . - _，避免出现奇怪的路径字符
+    let safe_label: String = label
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '.' || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let label = if safe_label.is_empty() { "old".to_string() } else { safe_label };
+
+    let mut destination = dir.join(format!("project.bak-{}.json", label));
+    let mut counter = 2;
+    while destination.exists() {
+        destination = dir.join(format!("project.bak-{}-{}.json", label, counter));
+        counter += 1;
+        if counter > 999 {
+            return Err("同名备份文件过多，请先清理 project.bak-*.json".to_string());
+        }
+    }
+
+    fs::copy(&source, &destination).map_err(|e| format!("备份 project.json 失败: {}", e))?;
+    Ok(destination.to_string_lossy().into_owned())
+}
+
 /// 判断一个 json 文件是否像以苒纪工程数据（只读前 256KB，避免加载超大文件）
 fn looks_like_project(path: &std::path::Path) -> bool {
     let file = match fs::File::open(path) {
@@ -568,6 +605,7 @@ pub fn run() {
             create_unique_project_workspace,
             resolve_workspace_dir,
             save_project_json,
+            backup_project_json,
             load_project_json,
             save_media_file,
             delete_media_file,

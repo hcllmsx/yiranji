@@ -5,6 +5,7 @@
 // 排序结果同时参与称谓推导（兄/弟、姐/妹、伯/叔 等），保证树上左右顺序与称呼一致。
 
 import type { Person } from '../types';
+import { getAdoptiveFathers, getAdoptiveMothers } from '../types';
 
 /** personId → 组内位次（0 起） */
 export type SiblingOrderMap = Record<string, number>;
@@ -29,20 +30,16 @@ export function compareByAge(a: Person, b: Person): number {
 
 /** 一个人的全部父母 id（生 / 养 / 继） */
 export function parentIdsOf(person?: Person | null): string[] {
-  const r: any = person?.relations;
+  const r = person?.relations;
   if (!r) return [];
-  const adoptiveFathers: string[] = Array.isArray(r.adoptiveFathers) && r.adoptiveFathers.length
-    ? r.adoptiveFathers
-    : r.adoptiveFather
-      ? [r.adoptiveFather]
-      : [];
-  const adoptiveMothers: string[] = Array.isArray(r.adoptiveMothers) && r.adoptiveMothers.length
-    ? r.adoptiveMothers
-    : r.adoptiveMother
-      ? [r.adoptiveMother]
-      : [];
-  const ids = [r.father, r.mother, ...adoptiveFathers, ...adoptiveMothers, r.stepFather, r.stepMother]
-    .filter(Boolean) as string[];
+  const ids = [
+    r.father,
+    r.mother,
+    ...getAdoptiveFathers(r),
+    ...getAdoptiveMothers(r),
+    r.stepFather,
+    r.stepMother,
+  ].filter(Boolean) as string[];
   return Array.from(new Set(ids));
 }
 

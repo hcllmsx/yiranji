@@ -15,8 +15,25 @@ import {
 import { Lunar } from 'lunar-javascript';
 import { isTauri, convertLocalSrc, saveMediaFile, deleteMediaFile } from '../utils/tauri';
 import AvatarCropModal from '../components/AvatarCropModal';
-import type { Person, Gender, LunarDate, SpouseRelationType, Relations } from '../types';
-import { getAdoptiveFathers, getAdoptiveMothers } from '../types';
+import type { Person, Gender, LunarDate, SpouseRelationType, ChildRelationType, Relations, AdoptiveParentGroup } from '../types';
+import {
+  createAdoptiveGroupId,
+  getAdoptiveFathers,
+  getAdoptiveGroups,
+  getAdoptiveMothers,
+  removePersonFromAdoptiveGroups,
+} from '../types';
+import {
+  blockingIssues,
+  findRelationCandidates,
+  getSelectionMismatch,
+  validateRelations,
+  withSelectedPerson,
+  type RelationContext,
+  type RelationDraft,
+  type RelationIssue,
+  type RelationRole,
+} from '../utils/relationRules';
 import './PersonEditPage.css';
 
 // 生卒日期允许的最早年份
@@ -109,17 +126,20 @@ function RelationPersonSelect({
   placeholder,
   onChange,
   style,
+  warning,
 }: {
   value: string;
   people: Person[];
   placeholder: string;
   onChange: (personId: string) => void;
   style?: React.CSSProperties;
+  /** 已选项不符合关系规则时的提示（为空表示无问题） */
+  warning?: string | null;
 }) {
   const [showDetails, setShowDetails] = useState(false);
   const selected = people.find((person) => person.id === value);
   return (
-    <div className="relation-person-select-wrap" style={style}>
+    <div className={`relation-person-select-wrap${warning ? ' relation-person-select-wrap--warn' : ''}`} style={style}>
       <select
         className="relation-select-dynamic relation-person-select"
         value={value}
@@ -127,6 +147,7 @@ function RelationPersonSelect({
         onFocus={() => setShowDetails(true)}
         onBlur={() => setShowDetails(false)}
         aria-label={placeholder}
+        aria-invalid={warning ? true : undefined}
       >
         <option value="">{placeholder}</option>
         {people.map((person) => <option key={person.id} value={person.id}>{getPersonOptionLabel(person)}</option>)}
@@ -136,28 +157,25 @@ function RelationPersonSelect({
           {selected ? getFullName(selected.surname, selected.givenName) : placeholder}
         </span>
       )}
+      {warning && (
+        <span
+          className="relation-person-select-warn"
+          data-warning={warning}
+          title={warning}
+          aria-label={warning}
+          tabIndex={0}
+        >
+          !
+        </span>
+      )}
     </div>
   );
-}
-
-function getAgeAtDate(birthValue?: string, referenceValue?: string): number | undefined {
-  if (!birthValue || !referenceValue) return undefined;
-  const birth = new Date(birthValue);
-  const reference = new Date(referenceValue);
-  if (Number.isNaN(birth.getTime()) || Number.isNaN(reference.getTime()) || reference < birth) return undefined;
-  let age = reference.getFullYear() - birth.getFullYear();
-  if (reference.getMonth() < birth.getMonth() || (reference.getMonth() === birth.getMonth() && reference.getDate() < birth.getDate())) age--;
-  return age;
-}
-
-function getBirthYearGap(firstBirth?: string, secondBirth?: string): number | undefined {
-  return getAgeAtDate(firstBirth, secondBirth) ?? getAgeAtDate(secondBirth, firstBirth);
 }
 
 export default function PersonEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { project, getPerson, updatePerson, addPerson, getPersonsList, addSpouse, removeSpouse } = useFamilyStore();
+  const { project, getPerson, updatePerson, addPerson, addSpouse, removeSpouse } = useFamilyStore();
 
   // 中国行政区划数据：从 public/data 运行时 fetch，独立缓存，不经过打包器
   const [REGIONS, setREGIONS] = useState<ChinaRegions>({});
@@ -170,7 +188,6 @@ export default function PersonEditPage() {
 
   const isNew = id === 'new';
   const existingPerson = id && !isNew ? getPerson(id) : undefined;
-  const allPersons = getPersonsList();
 
   // 表单状态
   const [surname, setSurname] = useState(project?.meta.surname || '');
@@ -281,8 +298,8 @@ export default function PersonEditPage() {
   // 关系状态
   const [fatherId, setFatherId] = useState<string>('');
   const [motherId, setMotherId] = useState<string>('');
-  const [adoptiveFatherIds, setAdoptiveFatherIds] = useState<string[]>([]);
-  const [adoptiveMotherIds, setAdoptiveMotherIds] = useState<string[]>([]);
+  // 养父母分组：一组 = 养父 + 养母，任一方可为空（单亲收养）
+  const [adoptiveGroups, setAdoptiveGroups] = useState<AdoptiveParentGroup[]>([]);
 
   // 配偶关系状态
   const [spouseEntries, setSpouseEntries] = useState<{ id: string; type: SpouseRelationType }[]>([]);
@@ -351,6 +368,121 @@ export default function PersonEditPage() {
       },
     };
   }, []);
+
+  // ==================== 家庭关系草稿（候选筛选与保存校验共用） ====================
+  // 这里把散落在各个 state 里的关系汇总成一份草稿，交给 relationRules 统一判定；
+  // 下拉候选、已选项告警、保存前校验读的都是同一份数据，不会出现口径不一致。
+
+  const currentPersonId = id && id !== 'new' ? id : undefined;
+
+  // 出生 / 逝世日期统一算一次：年龄筛选、保存校验、照片年龄都复用它
+  const draftBirthDate = birthUnknown
+    ? undefined
+    : `${String(sBirthYear).padStart(4, '0')}-${String(sBirthMonth).padStart(2, '0')}-${String(sBirthDay).padStart(2, '0')}`;
+  const draftDeathDate = isAlive || deathUnknown
+    ? undefined
+    : `${String(sDeathYear).padStart(4, '0')}-${String(sDeathMonth).padStart(2, '0')}-${String(sDeathDay).padStart(2, '0')}`;
+
+  const relationDraft: RelationDraft = useMemo(
+    () => ({
+      selfId: currentPersonId,
+      gender,
+      birthDateSolar: draftBirthDate,
+      isAlive,
+      deathDateSolar: draftDeathDate,
+      fatherId: fatherId || undefined,
+      motherId: motherId || undefined,
+            adoptiveGroups: adoptiveGroups
+              .map((group) => ({ ...group, fatherId: group.fatherId || undefined, motherId: group.motherId || undefined }))
+              .filter((group) => group.fatherId || group.motherId),
+      // 继父母目前没有编辑控件，沿用已保存值参与祖先计算
+      stepFatherId: existingPerson?.relations.stepFather,
+      stepMotherId: existingPerson?.relations.stepMother,
+      spouseIds: spouseEntries.map((entry) => entry.id).filter(Boolean),
+      childEntries: childEntries
+        .filter((entry) => entry.id)
+        .map((entry) => ({ id: entry.id, type: entry.type as ChildRelationType })),
+      siblingIds: siblingIds.filter(Boolean),
+    }),
+    [
+      currentPersonId,
+      gender,
+      draftBirthDate,
+      isAlive,
+      draftDeathDate,
+      fatherId,
+      motherId,
+      adoptiveGroups,
+      existingPerson?.relations.stepFather,
+      existingPerson?.relations.stepMother,
+      spouseEntries,
+      childEntries,
+      siblingIds,
+    ]
+  );
+
+  const relationContext: RelationContext = useMemo(
+    () => ({ draft: relationDraft, persons: project?.persons || {} }),
+    [relationDraft, project?.persons]
+  );
+
+  // 各下拉的候选：已按规则屏蔽、按年龄小→大排序，并保证当前已选人不会从列表里消失
+  const relationCandidates = useMemo(() => {
+    const build = (role: RelationRole, selectedId?: string, childType?: ChildRelationType) => {
+      const list = findRelationCandidates(role, relationContext, {
+        ignoreOccupancyFor: selectedId,
+        childType,
+      });
+      return withSelectedPerson(list, selectedId, relationContext.persons);
+    };
+    return {
+      father: build('father', fatherId || undefined),
+      mother: build('mother', motherId || undefined),
+      adoptiveFathers: adoptiveGroups.map((group) => build('adoptiveFather', group.fatherId)),
+      adoptiveMothers: adoptiveGroups.map((group) => build('adoptiveMother', group.motherId)),
+      spouses: spouseEntries.map((entry) => build('spouse', entry.id || undefined)),
+      children: childEntries.map((entry) =>
+        build('child', entry.id || undefined, (entry.type || 'biological') as ChildRelationType)
+      ),
+      siblings: siblingIds.map((sibId) => build('sibling', sibId || undefined)),
+    };
+  }, [relationContext, fatherId, motherId, adoptiveGroups, spouseEntries, childEntries, siblingIds]);
+
+  // 已选项若因改生日等原因不再满足规则，用红字就地提示，而不是悄悄把它从下拉里删掉
+  const selectionWarnings = useMemo(
+    () => ({
+      father: getSelectionMismatch('father', fatherId || undefined, relationContext),
+      mother: getSelectionMismatch('mother', motherId || undefined, relationContext),
+      adoptiveFathers: adoptiveGroups.map((group) =>
+        getSelectionMismatch('adoptiveFather', group.fatherId, relationContext)
+      ),
+      adoptiveMothers: adoptiveGroups.map((group) =>
+        getSelectionMismatch('adoptiveMother', group.motherId, relationContext)
+      ),
+      spouses: spouseEntries.map((entry) =>
+        getSelectionMismatch('spouse', entry.id || undefined, relationContext)
+      ),
+      children: childEntries.map((entry) =>
+        getSelectionMismatch(
+          'child',
+          entry.id || undefined,
+          relationContext,
+          (entry.type || 'biological') as ChildRelationType
+        )
+      ),
+      siblings: siblingIds.map((sibId) =>
+        getSelectionMismatch('sibling', sibId || undefined, relationContext)
+      ),
+    }),
+    [relationContext, fatherId, motherId, adoptiveGroups, spouseEntries, childEntries, siblingIds]
+  );
+
+  // 实时校验结果：阻断项（本次编辑引入的硬错误）必须改完才能保存
+  const relationIssues: RelationIssue[] = useMemo(
+    () => validateRelations(relationContext),
+    [relationContext]
+  );
+  const blockingRelationIssues = useMemo(() => blockingIssues(relationIssues), [relationIssues]);
 
   // ==================== 级联天数计算工具 ====================
 
@@ -525,8 +657,7 @@ export default function PersonEditPage() {
 
       setFatherId(initFatherId);
       setMotherId(initMotherId);
-      setAdoptiveFatherIds(getAdoptiveFathers(existingPerson.relations));
-      setAdoptiveMotherIds(getAdoptiveMothers(existingPerson.relations));
+      setAdoptiveGroups(getAdoptiveGroups(existingPerson.relations).map((group) => ({ ...group })));
 
       // 加载配偶关系
       setSpouseEntries(
@@ -707,55 +838,21 @@ export default function PersonEditPage() {
 
   // 保存数据
   const handleSave = async () => {
-    const warnings: string[] = [];
-    const todayDate = new Date();
-    const today = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
-    const draftBirthDate = birthUnknown ? undefined : `${String(sBirthYear).padStart(4, '0')}-${String(sBirthMonth).padStart(2, '0')}-${String(sBirthDay).padStart(2, '0')}`;
-    const draftEndDate = isAlive || deathUnknown ? undefined : `${String(sDeathYear).padStart(4, '0')}-${String(sDeathMonth).padStart(2, '0')}-${String(sDeathDay).padStart(2, '0')}`;
-    const selfAge = getAgeAtDate(draftBirthDate, isAlive ? today : draftEndDate);
-
-    spouseEntries.forEach((entry) => {
-      if (existingPerson?.relations.spouses.some((spouse) => spouse.id === entry.id)) return;
-      const partner = project?.persons[entry.id];
-      if (!partner) return;
-      const partnerAge = getAgeAtDate(partner.birthDateSolar, partner.isAlive ? today : partner.deathDateSolar);
-      const ageGap = getBirthYearGap(draftBirthDate, partner.birthDateSolar);
-      if ((selfAge !== undefined && selfAge < 18) || (partnerAge !== undefined && partnerAge < 18) || (ageGap !== undefined && ageGap >= 40)) {
-        warnings.push(`配偶「${getFullName(partner.surname, partner.givenName)}」与本人年龄差异较大或涉及未成年人`);
-      }
-    });
-
-    const checkParentAge = (parentId: string, childBirthDate?: string) => {
-      const parent = project?.persons[parentId];
-      if (!parent?.birthDateSolar || !childBirthDate) return;
-      if (new Date(parent.birthDateSolar) > new Date(childBirthDate)) {
-        warnings.push(`亲子关系「${getFullName(parent.surname, parent.givenName)}」的出生日期晚于本人`);
-        return;
-      }
-      const ageAtChildBirth = getAgeAtDate(parent.birthDateSolar, childBirthDate);
-      if (ageAtChildBirth !== undefined && ageAtChildBirth < 12) {
-        warnings.push(`亲子关系「${getFullName(parent.surname, parent.givenName)}」与本人出生日期相差不足 12 年`);
-      }
-    };
-    if (draftBirthDate) {
-      if (fatherId && fatherId !== existingPerson?.relations.father) checkParentAge(fatherId, draftBirthDate);
-      if (motherId && motherId !== existingPerson?.relations.mother) checkParentAge(motherId, draftBirthDate);
+    // 硬错误（自指 / 成环 / 角色互斥 / 年龄倒挂）：直接拦住，不允许写入
+    if (blockingRelationIssues.length > 0) {
+      document.getElementById('family-relation-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
     }
-    childEntries.filter((entry) => entry.id && entry.type === 'biological').forEach((entry) => {
-      if (existingPerson?.relations.children.some((child) => child.id === entry.id)) return;
-      const child = project?.persons[entry.id];
-      if (!child?.birthDateSolar || !draftBirthDate) return;
-      if (new Date(child.birthDateSolar) < new Date(draftBirthDate)) {
-        warnings.push(`子女「${getFullName(child.surname, child.givenName)}」的出生日期早于本人`);
-        return;
-      }
-      const parentAgeAtChildBirth = getAgeAtDate(draftBirthDate, child.birthDateSolar);
-      if (parentAgeAtChildBirth !== undefined && parentAgeAtChildBirth < 12) {
-        warnings.push(`子女「${getFullName(child.surname, child.givenName)}」与本人出生日期相差不足 12 年`);
-      }
-    });
 
-    if (warnings.length > 0 && !window.confirm(`关系信息可能需要核对：\n\n${Array.from(new Set(warnings)).join('；\n')}。\n\n仍要保存吗？`)) return;
+    // 软提示：只对本次编辑新引入的疑点弹窗（历史遗留问题已在打开时处理，不再打扰）
+    const warnings = relationIssues.filter(
+      (issue) => issue.level === 'warning' && issue.introducedByEdit
+    );
+    if (warnings.length > 0) {
+      const text = warnings.map((issue, index) => `${index + 1}. ${issue.message}`).join('\n');
+      if (!window.confirm(`关系信息可能需要核对：\n\n${text}\n\n仍要保存吗？`)) return;
+    }
+
     await doSave();
   };
 
@@ -926,8 +1023,12 @@ export default function PersonEditPage() {
         if (p.id === existingPerson.id) return;
         const shareFather = existingPerson.relations.father && p.relations.father === existingPerson.relations.father;
         const shareMother = existingPerson.relations.mother && p.relations.mother === existingPerson.relations.mother;
-        const shareAdoptiveFather = existingPerson.relations.adoptiveFather && p.relations.adoptiveFather === existingPerson.relations.adoptiveFather;
-        const shareAdoptiveMother = existingPerson.relations.adoptiveMother && p.relations.adoptiveMother === existingPerson.relations.adoptiveMother;
+        const shareAdoptiveFather = getAdoptiveFathers(existingPerson.relations).some((af) =>
+          getAdoptiveFathers(p.relations).includes(af)
+        );
+        const shareAdoptiveMother = getAdoptiveMothers(existingPerson.relations).some((am) =>
+          getAdoptiveMothers(p.relations).includes(am)
+        );
         if (shareFather || shareMother || shareAdoptiveFather || shareAdoptiveMother) {
           origSiblingIds.push(p.id);
         }
@@ -938,17 +1039,21 @@ export default function PersonEditPage() {
     // 计算最终要写入的父母 ID 链
     let finalFatherId = fatherId;
     let finalMotherId = motherId;
-    let finalAdoptiveFatherIds = [...adoptiveFatherIds].filter(Boolean);
-    let finalAdoptiveMotherIds = [...adoptiveMotherIds].filter(Boolean);
+    // 只保留至少填了一方的组，空白槽位归一为 undefined
+    let finalAdoptiveGroups: AdoptiveParentGroup[] = adoptiveGroups
+      .map((group) => ({
+        ...group,
+        fatherId: group.fatherId || undefined,
+        motherId: group.motherId || undefined,
+      }))
+      .filter((group) => Boolean(group.fatherId || group.motherId));
 
     const currentPersonId = id && !isNew ? id : uuidv4();
 
     // 记录保存前是否已有生父生母/养父母，用于区分"用户主动清除"与"原本就没设"两种场景
     const origRelations: Relations = existingPerson?.relations ?? { spouses: [], children: [] };
     const origHadParents = !!(origRelations.father || origRelations.mother);
-    const origHadAdoptiveParents =
-      getAdoptiveFathers(origRelations).length > 0 ||
-      getAdoptiveMothers(origRelations).length > 0;
+    const origHadAdoptiveParents = getAdoptiveGroups(origRelations).length > 0;
     // 记录保存前的生父生母 ID，用于父母变更/取消后清理旧父母 children 列表
     const origFatherId = existingPerson?.relations.father;
     const origMotherId = existingPerson?.relations.mother;
@@ -968,15 +1073,13 @@ export default function PersonEditPage() {
         }
       }
       // 养父母做同等继承（同样仅在原来就没有养父母时才继承）
-      if (finalAdoptiveFatherIds.length === 0 && finalAdoptiveMotherIds.length === 0 && !origHadAdoptiveParents) {
+      if (finalAdoptiveGroups.length === 0 && !origHadAdoptiveParents) {
         for (const sibId of siblingIds) {
           const sib = project.persons[sibId];
           if (sib) {
-            const sibAFs = getAdoptiveFathers(sib.relations);
-            const sibAMs = getAdoptiveMothers(sib.relations);
-            if (sibAFs.length > 0 || sibAMs.length > 0) {
-              finalAdoptiveFatherIds = sibAFs;
-              finalAdoptiveMotherIds = sibAMs;
+            const sibGroups = getAdoptiveGroups(sib.relations);
+            if (sibGroups.length > 0) {
+              finalAdoptiveGroups = sibGroups.map((group) => ({ ...group }));
               break;
             }
           }
@@ -1056,10 +1159,9 @@ export default function PersonEditPage() {
       relations: {
         father: finalFatherId || undefined,
         mother: finalMotherId || undefined,
-        adoptiveFather: finalAdoptiveFatherIds[0] || undefined,
-        adoptiveMother: finalAdoptiveMotherIds[0] || undefined,
-        adoptiveFathers: finalAdoptiveFatherIds.length > 0 ? finalAdoptiveFatherIds : undefined,
-        adoptiveMothers: finalAdoptiveMotherIds.length > 0 ? finalAdoptiveMotherIds : undefined,
+        adoptiveParents: finalAdoptiveGroups.length > 0
+          ? finalAdoptiveGroups.map((group) => ({ ...group }))
+          : undefined,
         spouses: spouseEntries.filter(s => s.id),
         children: childEntries.filter(c => c.id).map(c => ({ id: c.id, type: c.type as any })),
       },
@@ -1084,13 +1186,12 @@ export default function PersonEditPage() {
           if (finalMotherId) {
             sib.relations.mother = finalMotherId;
           }
-          if (finalAdoptiveFatherIds.length > 0) {
-            sib.relations.adoptiveFathers = finalAdoptiveFatherIds;
-            sib.relations.adoptiveFather = finalAdoptiveFatherIds[0];
-          }
-          if (finalAdoptiveMotherIds.length > 0) {
-            sib.relations.adoptiveMothers = finalAdoptiveMotherIds;
-            sib.relations.adoptiveMother = finalAdoptiveMotherIds[0];
+          if (finalAdoptiveGroups.length > 0) {
+            sib.relations.adoptiveParents = finalAdoptiveGroups.map((group) => ({ ...group }));
+            delete sib.relations.adoptiveFather;
+            delete sib.relations.adoptiveMother;
+            delete sib.relations.adoptiveFathers;
+            delete sib.relations.adoptiveMothers;
           }
           await updatePerson(sibId, { relations: sib.relations });
         }
@@ -1102,12 +1203,14 @@ export default function PersonEditPage() {
         if (rem) {
           if (rem.relations.father === finalFatherId) rem.relations.father = undefined;
           if (rem.relations.mother === finalMotherId) rem.relations.mother = undefined;
-          // 清理养父母数组引用
-          if (rem.relations.adoptiveFathers) {
-            rem.relations.adoptiveFathers = rem.relations.adoptiveFathers.filter(id => !finalAdoptiveFatherIds.includes(id));
-          }
-          if (rem.relations.adoptiveMothers) {
-            rem.relations.adoptiveMothers = rem.relations.adoptiveMothers.filter(id => !finalAdoptiveMotherIds.includes(id));
+          // 清理养父母分组引用
+          if (rem.relations.adoptiveParents) {
+            let groups = rem.relations.adoptiveParents;
+            finalAdoptiveGroups.forEach((group) => {
+              if (group.fatherId) groups = removePersonFromAdoptiveGroups(groups, group.fatherId) ?? groups;
+              if (group.motherId) groups = removePersonFromAdoptiveGroups(groups, group.motherId) ?? groups;
+            });
+            rem.relations.adoptiveParents = groups;
           }
           await updatePerson(remId, { relations: rem.relations });
         }
@@ -1116,14 +1219,21 @@ export default function PersonEditPage() {
       // 3. 同步更新生父母节点的 children 列表
       const allChildrenIds = [currentPersonId, ...siblingIds];
 
-      const updateParentChildren = async (parentId: string) => {
+      const updateParentChildren = async (
+        parentId: string,
+        childIds: string[],
+        childType: 'biological' | 'adopted' | 'step',
+        dropRemovedSiblings = true
+      ) => {
         const parent = project.persons[parentId];
         if (parent) {
           const origChildren = parent.relations.children || [];
-          let updatedChildren = origChildren.filter(c => !removedSiblingIds.includes(c.id));
-          allChildrenIds.forEach(cid => {
+          const updatedChildren = dropRemovedSiblings
+            ? origChildren.filter(c => !removedSiblingIds.includes(c.id))
+            : [...origChildren];
+          childIds.forEach(cid => {
             if (!updatedChildren.some(c => c.id === cid)) {
-              updatedChildren.push({ id: cid, type: 'biological' });
+              updatedChildren.push({ id: cid, type: childType });
             }
           });
           parent.relations.children = updatedChildren;
@@ -1150,8 +1260,23 @@ export default function PersonEditPage() {
         await removeFromParentChildren(origMotherId);
       }
 
-      if (finalFatherId) await updateParentChildren(finalFatherId);
-      if (finalMotherId) await updateParentChildren(finalMotherId);
+      if (finalFatherId) await updateParentChildren(finalFatherId, allChildrenIds, 'biological');
+      if (finalMotherId) await updateParentChildren(finalMotherId, allChildrenIds, 'biological');
+
+      // 3b. 同步养父母节点的 children：只记本人，不对手足扩散（养父母不一定收养全家）
+      const finalAdoptiveParentIds = finalAdoptiveGroups
+        .flatMap((group) => [group.fatherId, group.motherId])
+        .filter((id): id is string => Boolean(id));
+      const origAdoptiveParentIds = [
+        ...getAdoptiveFathers(origRelations),
+        ...getAdoptiveMothers(origRelations),
+      ];
+      for (const pid of origAdoptiveParentIds) {
+        if (!finalAdoptiveParentIds.includes(pid)) await removeFromParentChildren(pid);
+      }
+      for (const pid of finalAdoptiveParentIds) {
+        await updateParentChildren(pid, [currentPersonId], 'adopted', false);
+      }
 
       // 4. 同步配偶关系（双向）
       const oldSpouseIds = new Set((existingPerson?.relations.spouses || []).map(s => s.id));
@@ -1194,9 +1319,7 @@ export default function PersonEditPage() {
     navigate(`/person/${currentPersonId}`);
   };
 
-  const calculatedBirthSolarStr = birthUnknown
-    ? ''
-    : `${String(sBirthYear).padStart(4, '0')}-${String(sBirthMonth).padStart(2, '0')}-${String(sBirthDay).padStart(2, '0')}`;
+  const calculatedBirthSolarStr = draftBirthDate || '';
   const photoAgeText = calculatedBirthSolarStr && avatarPhotoDate
     ? calculatePhotoAge(calculatedBirthSolarStr, avatarPhotoDate)
     : null;
@@ -1246,6 +1369,14 @@ export default function PersonEditPage() {
 
     const currentPersonId = id && id !== 'new' ? id : 'temp-new-id';
 
+    const tempAdoptiveGroups = adoptiveGroups
+      .map((group) => ({
+        ...group,
+        fatherId: group.fatherId || undefined,
+        motherId: group.motherId || undefined,
+      }))
+      .filter((group) => Boolean(group.fatherId || group.motherId));
+
     const selfTemp: any = {
       id: currentPersonId,
       gender,
@@ -1254,8 +1385,7 @@ export default function PersonEditPage() {
       relations: {
         father: fatherId || undefined,
         mother: motherId || undefined,
-        adoptiveFathers: adoptiveFatherIds.length > 0 ? adoptiveFatherIds : undefined,
-        adoptiveMothers: adoptiveMotherIds.length > 0 ? adoptiveMotherIds : undefined,
+        adoptiveParents: tempAdoptiveGroups.length > 0 ? tempAdoptiveGroups : undefined,
       }
     };
 
@@ -1270,8 +1400,7 @@ export default function PersonEditPage() {
             ...sibObj.relations,
             father: fatherId || undefined,
             mother: motherId || undefined,
-            adoptiveFathers: adoptiveFatherIds.length > 0 ? adoptiveFatherIds : undefined,
-            adoptiveMothers: adoptiveMotherIds.length > 0 ? adoptiveMotherIds : undefined,
+            adoptiveParents: tempAdoptiveGroups.length > 0 ? tempAdoptiveGroups : undefined,
           }
         };
       }
@@ -1279,67 +1408,6 @@ export default function PersonEditPage() {
 
     return basePersons;
   };
-
-  const availablePersons = allPersons.filter((p) => p.id !== id);
-
-  const currentPersonId = id && id !== 'new' ? id : undefined;
-  const ancestorIds = new Set<string>();
-  if (currentPersonId) {
-    const pending = [currentPersonId];
-    while (pending.length) {
-      const personId = pending.pop()!;
-      const person = project?.persons[personId];
-      if (!person) continue;
-      const parents = [
-        person.relations.father,
-        person.relations.mother,
-        ...getAdoptiveFathers(person.relations),
-        ...getAdoptiveMothers(person.relations),
-      ].filter((parentId): parentId is string => Boolean(parentId));
-      parents.forEach((parentId) => {
-        if (!ancestorIds.has(parentId)) {
-          ancestorIds.add(parentId);
-          pending.push(parentId);
-        }
-      });
-    }
-  }
-
-  const descendantIds = new Set<string>();
-  if (currentPersonId) {
-    const pending = [currentPersonId];
-    while (pending.length) {
-      const personId = pending.pop()!;
-      allPersons.forEach((person) => {
-        const parents = [
-          person.relations.father,
-          person.relations.mother,
-          ...getAdoptiveFathers(person.relations),
-          ...getAdoptiveMothers(person.relations),
-        ];
-        const isChildByParentLink = parents.includes(personId);
-        const isChildByChildLink = project?.persons[personId]?.relations.children?.some((child) => child.id === person.id) || false;
-        if ((isChildByParentLink || isChildByChildLink) && !descendantIds.has(person.id)) {
-          descendantIds.add(person.id);
-          pending.push(person.id);
-        }
-      });
-    }
-  }
-
-  const getRelationCandidates = (role: 'father' | 'mother' | 'adoptiveFather' | 'adoptiveMother' | 'spouse' | 'child' | 'sibling', excludedIds: string[] = []) =>
-    availablePersons.filter((person) => {
-      if (excludedIds.includes(person.id)) return false;
-      if ((role === 'father' || role === 'adoptiveFather') && person.gender !== 'male') return false;
-      if ((role === 'mother' || role === 'adoptiveMother') && person.gender !== 'female') return false;
-      const selectedParents = [fatherId, motherId, ...adoptiveFatherIds, ...adoptiveMotherIds].filter(Boolean);
-      const selectedChildren = childEntries.map((entry) => entry.id).filter(Boolean);
-      if ((role === 'father' || role === 'mother' || role === 'adoptiveFather' || role === 'adoptiveMother') && (descendantIds.has(person.id) || selectedChildren.includes(person.id))) return false;
-      if (role === 'child' && (ancestorIds.has(person.id) || selectedParents.includes(person.id))) return false;
-      if (role === 'sibling' && (ancestorIds.has(person.id) || descendantIds.has(person.id) || selectedParents.includes(person.id) || selectedChildren.includes(person.id))) return false;
-      if (role === 'spouse' && (ancestorIds.has(person.id) || descendantIds.has(person.id))) return false;
-      return true;
-    });
 
   // ==================== 选项集生成 ====================
 
@@ -1414,7 +1482,11 @@ export default function PersonEditPage() {
           <button className="btn btn-secondary" onClick={() => navigate(-1)}>
             取消
           </button>
-          <button className="btn btn-primary" onClick={handleSave}>
+          <button
+            className={`btn btn-primary${blockingRelationIssues.length > 0 ? ' btn-has-issues' : ''}`}
+            onClick={handleSave}
+            title={blockingRelationIssues.length > 0 ? '有家庭关系需要先修正，点击查看' : undefined}
+          >
             保存
           </button>
         </div>
@@ -2235,78 +2307,94 @@ export default function PersonEditPage() {
       </div>
 
       {/* 关系选择 */}
-      <div className="form-section">
+      <div className="form-section" id="family-relation-section">
         <div className="form-section-title">家庭关系</div>
         <div className="relation-selector-dynamic">
-          
+
+          {/* 硬错误：本次编辑引入的规则冲突，必须修正才能保存 */}
+          {blockingRelationIssues.length > 0 && (
+            <div className="relation-issue-banner relation-issue-banner--error" role="alert">
+              <strong>以下关系需要先修正才能保存：</strong>
+              <ul>
+                {blockingRelationIssues.map((issue, index) => (
+                  <li key={`${issue.code}-${index}`}>{issue.message}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* 年龄判定被停用时的说明：缺生日的人不参与筛选，避免被迫把关系断开 */}
+          {!draftBirthDate && (fatherId || motherId || adoptiveGroups.some((group) => group.fatherId || group.motherId) || childEntries.some((entry) => entry.id)) && (
+            <div className="relation-issue-hint">
+              本人未填写出生日期，父母 / 子女的年龄筛选已停用，仅校验关系结构。
+            </div>
+          )}
+
           {/* 直系生父母 */}
           <div className="relation-group-title">生父母</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px' }}>
             <div className="relation-item-dynamic">
               <span className="relation-label-dynamic">父亲</span>
-              <RelationPersonSelect value={fatherId} placeholder="未设置" people={getRelationCandidates('father', [motherId, ...adoptiveFatherIds])} onChange={setFatherId} />
+              <RelationPersonSelect value={fatherId} placeholder="未设置" people={relationCandidates.father} onChange={setFatherId} warning={selectionWarnings.father} />
             </div>
             <div className="relation-item-dynamic">
               <span className="relation-label-dynamic">母亲</span>
-              <RelationPersonSelect value={motherId} placeholder="未设置" people={getRelationCandidates('mother', [fatherId, ...adoptiveMotherIds])} onChange={setMotherId} />
+              <RelationPersonSelect value={motherId} placeholder="未设置" people={relationCandidates.mother} onChange={setMotherId} warning={selectionWarnings.mother} />
             </div>
           </div>
 
-          {/* 养父母（动态展现） */}
-          {(adoptiveFatherIds.length > 0 || adoptiveMotherIds.length > 0) && (
+          {/* 养父母（多组，每组一张卡片） */}
+          {adoptiveGroups.length > 0 && (
             <>
               <div className="relation-group-title">养父母</div>
-              <div className="adoptive-parents-grid">
-                  {adoptiveFatherIds.map((afId, index) => (
-                    <div key={`af-${index}`} className="relation-item-dynamic">
-                      <span className="relation-label-dynamic">养父</span>
-                      <RelationPersonSelect
-                        value={afId}
-                        placeholder="未设置"
-                        people={getRelationCandidates('adoptiveFather', [fatherId, ...adoptiveFatherIds.filter((_, i) => i !== index)])}
-                        onChange={(value) => {
-                          const newIds = [...adoptiveFatherIds];
-                          newIds[index] = value;
-                          setAdoptiveFatherIds(newIds);
-                        }}
-                      />
+              <div className="adoptive-groups">
+                {adoptiveGroups.map((group, index) => (
+                  <div key={group.id} className="adoptive-group-card">
+                    <div className="adoptive-group-header">
+                      <span className="adoptive-group-title">第 {index + 1} 组</span>
                       <button
                         type="button"
                         className="relation-delete-btn"
-                        title="移除养父关系"
+                        title="删除这一组养父母"
                         onClick={() => {
-                          setAdoptiveFatherIds(adoptiveFatherIds.filter((_, i) => i !== index));
+                          setAdoptiveGroups(adoptiveGroups.filter((_, i) => i !== index));
                         }}
                       >
                         ✕
                       </button>
                     </div>
-                  ))}
-                  {adoptiveMotherIds.map((amId, index) => (
-                    <div key={`am-${index}`} className="relation-item-dynamic">
-                      <span className="relation-label-dynamic">养母</span>
-                      <RelationPersonSelect
-                        value={amId}
-                        placeholder="未设置"
-                        people={getRelationCandidates('adoptiveMother', [motherId, ...adoptiveMotherIds.filter((_, i) => i !== index)])}
-                        onChange={(value) => {
-                          const newIds = [...adoptiveMotherIds];
-                          newIds[index] = value;
-                          setAdoptiveMotherIds(newIds);
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className="relation-delete-btn"
-                        title="移除养母关系"
-                        onClick={() => {
-                          setAdoptiveMotherIds(adoptiveMotherIds.filter((_, i) => i !== index));
-                        }}
-                      >
-                        ✕
-                      </button>
+                    <div className="adoptive-group-slots">
+                      <div className="relation-item-dynamic">
+                        <span className="relation-label-dynamic">养父</span>
+                        <RelationPersonSelect
+                          value={group.fatherId || ''}
+                          placeholder="未设置"
+                          people={relationCandidates.adoptiveFathers[index] || []}
+                          onChange={(value) => {
+                            const next = [...adoptiveGroups];
+                            next[index] = { ...next[index], fatherId: value || undefined };
+                            setAdoptiveGroups(next);
+                          }}
+                          warning={selectionWarnings.adoptiveFathers[index]}
+                        />
+                      </div>
+                      <div className="relation-item-dynamic">
+                        <span className="relation-label-dynamic">养母</span>
+                        <RelationPersonSelect
+                          value={group.motherId || ''}
+                          placeholder="未设置"
+                          people={relationCandidates.adoptiveMothers[index] || []}
+                          onChange={(value) => {
+                            const next = [...adoptiveGroups];
+                            next[index] = { ...next[index], motherId: value || undefined };
+                            setAdoptiveGroups(next);
+                          }}
+                          warning={selectionWarnings.adoptiveMothers[index]}
+                        />
+                      </div>
                     </div>
-                  ))}
+                  </div>
+                ))}
               </div>
             </>
           )}
@@ -2326,12 +2414,21 @@ export default function PersonEditPage() {
                     style={{ flex: 2 }}
                     value={entry.id}
                     placeholder="选择人员..."
-                    people={getRelationCandidates('spouse', spouseEntries.filter((_, i) => i !== index).map((item) => item.id))}
+                    people={relationCandidates.spouses[index] || []}
                     onChange={(value) => {
+                      const partner = value ? project?.persons[value] : undefined;
                       const newEntries = [...spouseEntries];
-                      newEntries[index] = { ...newEntries[index], id: value };
+                      const prev = newEntries[index];
+                      // 换人时按对方生死重置状态：已故 → "已故"，在世的则从上一段的"已故"恢复为"已婚"
+                      let type = prev.type;
+                      if (value !== prev.id) {
+                        if (partner && partner.isAlive === false) type = 'deceased';
+                        else if (prev.type === 'deceased') type = 'married';
+                      }
+                      newEntries[index] = { ...prev, id: value, type };
                       setSpouseEntries(newEntries);
                     }}
+                    warning={selectionWarnings.spouses[index]}
                   />
                   <select
                     className="relation-select-dynamic"
@@ -2377,12 +2474,13 @@ export default function PersonEditPage() {
                     style={{ flex: 2 }}
                     value={entry.id}
                     placeholder="选择人员..."
-                    people={getRelationCandidates('child', childEntries.filter((_, i) => i !== index).map((item) => item.id))}
+                    people={relationCandidates.children[index] || []}
                     onChange={(value) => {
                       const newEntries = [...childEntries];
                       newEntries[index] = { ...newEntries[index], id: value };
                       setChildEntries(newEntries);
                     }}
+                    warning={selectionWarnings.children[index]}
                   />
                   <select
                     className="relation-select-dynamic"
@@ -2431,12 +2529,13 @@ export default function PersonEditPage() {
                     <RelationPersonSelect
                       value={sibId}
                       placeholder="请选择人员..."
-                      people={getRelationCandidates('sibling', siblingIds.filter((_, i) => i !== index))}
+                      people={relationCandidates.siblings[index] || []}
                       onChange={(value) => {
                         const newSibs = [...siblingIds];
                         newSibs[index] = value;
                         setSiblingIds(newSibs);
                       }}
+                      warning={selectionWarnings.siblings[index]}
                     />
                     {rankText && (
                       <span className="relation-rank-badge">{rankText}</span>
@@ -2473,21 +2572,11 @@ export default function PersonEditPage() {
                   type="button"
                   className="relation-menu-item"
                   onClick={() => {
-                    setAdoptiveFatherIds([...adoptiveFatherIds, '']);
+                    setAdoptiveGroups([...adoptiveGroups, { id: createAdoptiveGroupId() }]);
                     setShowRelationMenu(false);
                   }}
                 >
-                  增加 养父
-                </button>
-                <button
-                  type="button"
-                  className="relation-menu-item"
-                  onClick={() => {
-                    setAdoptiveMotherIds([...adoptiveMotherIds, '']);
-                    setShowRelationMenu(false);
-                  }}
-                >
-                  增加 养母
+                  增加 养父母（一组）
                 </button>
                 <button
                   type="button"

@@ -436,6 +436,91 @@
   pointer-events: none;
 }
 
+/* 已选项不满足关系规则：边框变红 + 右上角叹号，悬停看原因 */
+.relation-person-select-wrap--warn .relation-person-select {
+  border-color: var(--color-danger, #ef4444);
+}
+
+.relation-person-select-warn {
+  position: absolute;
+  z-index: 2;
+  top: -6px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: var(--color-danger, #ef4444);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  cursor: help;
+  outline: none;
+}
+
+/* 悬停 / 键盘聚焦时展开具体原因（原生 title 有延迟，这里即时显示） */
+.relation-person-select-warn::after {
+  content: attr(data-warning);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 10;
+  width: max-content;
+  max-width: 240px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background-color: rgba(17, 24, 39, 0.94);
+  color: #fff;
+  font-size: var(--text-xs);
+  font-weight: 400;
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(2px);
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s;
+  pointer-events: none;
+}
+
+.relation-person-select-warn:hover::after,
+.relation-person-select-warn:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+/* 保存校验结果：阻断项红色、缺生日说明灰色 */
+.relation-issue-banner {
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.relation-issue-banner--error {
+  border: 1px solid var(--color-danger, #ef4444);
+  background-color: var(--color-danger-lighter, #fef2f2);
+  color: var(--color-danger, #b91c1c);
+}
+
+.relation-issue-banner ul {
+  margin: var(--space-2) 0 0 0;
+  padding-left: 1.2em;
+}
+
+.relation-issue-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  padding-left: var(--space-2);
+}
+
+/* 有阻断错误时保存按钮描红，提醒先处理 */
+.btn-has-issues {
+  box-shadow: 0 0 0 2px var(--color-danger, #ef4444);
+}
+
 .relation-rank-badge {
   font-size: var(--text-xs);
   color: var(--color-accent);
@@ -513,15 +598,43 @@
   animation: slideDown 0.15s ease-out;
 }
 
-.adoptive-parents-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+.adoptive-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   margin-bottom: 12px;
 }
 
+/* 一组养父母就是一张卡片，卡片内左右两个槽位即“哪一位与哪一位是一家” */
+.adoptive-group-card {
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg-page);
+  padding: var(--space-2) var(--space-3);
+}
+
+.adoptive-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
+.adoptive-group-title {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  letter-spacing: 0.02em;
+}
+
+.adoptive-group-slots {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 @media (max-width: 700px) {
-  .adoptive-parents-grid {
+  .adoptive-group-slots {
     grid-template-columns: minmax(0, 1fr);
   }
 }

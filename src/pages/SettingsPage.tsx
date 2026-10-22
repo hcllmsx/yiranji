@@ -648,7 +648,12 @@ export default function SettingsPage() {
       <form onSubmit={handleSave} className="settings-form">
         {/* 基本信息 */}
         <div className="settings-section">
-          <div className="settings-section-title">基本信息</div>
+          <div className="settings-section-title settings-section-title--with-badge">
+            <span>基本信息</span>
+            <span className="settings-data-version" title="家谱数据结构版本，打开旧档案时会自动升级">
+              当前家谱数据版本：{project?.meta.version || '—'}
+            </span>
+          </div>
           <div className="form-group">
             <label className="form-label" htmlFor="familyName">家谱名称</label>
             <input
