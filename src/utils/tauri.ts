@@ -236,11 +236,41 @@ if (isTauri()) {
 }
 
 /**
+ * 判断给定的媒体/头像路径在当前环境下是否可作为有效的 <img> src 显示
+ * 在 Tauri 桌面环境下：只要有非空路径均可通过 convertLocalSrc 正常加载
+ * 在纯 Web 环境下：仅支持 data: (Base64)、blob: 或 http(s): 在线 URL，
+ *                  如果是本地磁盘绝对路径（如 D:\... 或 /Users/...），由于浏览器沙箱限制无法读取，返回 false
+ */
+export function canDisplaySrc(path?: string | null): path is string {
+  if (!path || typeof path !== 'string') return false;
+  const trimmed = path.trim();
+  if (!trimmed) return false;
+  if (isTauri()) return true;
+  return (
+    trimmed.startsWith('data:') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://')
+  );
+}
+
+/**
  * 将本地绝对路径转换为可以直接在 img 标签渲染的协议 URL
  */
-export function convertLocalSrc(path: string): string {
+export function convertLocalSrc(path?: string | null): string {
   if (!path) return '';
-  if (path.startsWith('data:')) return path; // Web 端 Base64 直接返回
+  if (
+    path.startsWith('data:') ||
+    path.startsWith('blob:') ||
+    path.startsWith('http://') ||
+    path.startsWith('https://')
+  ) {
+    return path;
+  }
+  if (!isTauri()) {
+    // 纯网页环境下，本地物理磁盘绝对路径浏览器无法直接访问
+    return '';
+  }
   const tauriInternals = (window as any).__TAURI_INTERNALS__;
   if (tauriInternals?.convertFileSrc) {
     return tauriInternals.convertFileSrc(path, 'asset');

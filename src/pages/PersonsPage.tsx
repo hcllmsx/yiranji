@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useFamilyStore } from '../store/familyStore';
 import { getFullName, getLifeSpan, getAgeDescription } from '../utils';
-import { convertLocalSrc } from '../utils/tauri';
+import { convertLocalSrc, canDisplaySrc } from '../utils/tauri';
 import ImageViewer from '../components/ImageViewer';
 import './PersonsPage.css';
 
@@ -46,10 +46,10 @@ export default function PersonsPage() {
             className={`person-card ${person.isDefaultPerspective ? 'perspective' : ''}`}
           >
             <div
-              className={`person-card-avatar${person.avatar ? ' clickable' : ''}`}
-              title={person.avatar ? '点击查看头像大图' : undefined}
+              className={`person-card-avatar${canDisplaySrc(person.avatar) ? ' clickable' : ''}`}
+              title={canDisplaySrc(person.avatar) ? '点击查看头像大图' : undefined}
               onClick={(e) => {
-                if (!person.avatar) return;
+                if (!canDisplaySrc(person.avatar)) return;
                 e.preventDefault();
                 e.stopPropagation();
                 setAvatarViewer({
@@ -58,8 +58,21 @@ export default function PersonsPage() {
                 });
               }}
             >
-              {person.avatar ? (
-                <img src={convertLocalSrc(person.avatar)} alt="" />
+              {canDisplaySrc(person.avatar) ? (
+                <img
+                  src={convertLocalSrc(person.avatar)}
+                  alt=""
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const parent = e.currentTarget.parentElement;
+                    if (parent && !parent.querySelector('.avatar-fallback-text')) {
+                      const span = document.createElement('span');
+                      span.className = 'avatar-fallback-text';
+                      span.textContent = person.surname;
+                      parent.appendChild(span);
+                    }
+                  }}
+                />
               ) : (
                 person.surname
               )}

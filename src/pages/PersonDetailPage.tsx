@@ -12,7 +12,7 @@ import {
   getZodiac,
   getSiblingRank,
 } from '../utils';
-import { convertLocalSrc, isTauri, saveMediaFile, deleteMediaFile } from '../utils/tauri';
+import { convertLocalSrc, canDisplaySrc, isTauri, saveMediaFile, deleteMediaFile } from '../utils/tauri';
 import { lockBodyScroll } from '../utils/bodyScrollLock';
 import ImageViewer, { type ViewerImage } from '../components/ImageViewer';
 import type { Photo, VideoFile } from '../types';
@@ -531,7 +531,7 @@ export default function PersonDetailPage() {
   });
 
   const avatarViewerImages: ViewerImage[] = [];
-  if (person.avatarRect) {
+  if (canDisplaySrc(person.avatarRect)) {
     avatarViewerImages.push({
       src: convertLocalSrc(person.avatarRect),
       caption: `${fullName} · 形象大图`,
@@ -541,7 +541,7 @@ export default function PersonDetailPage() {
       alt: fullName,
     });
   }
-  if (person.avatar) {
+  if (canDisplaySrc(person.avatar)) {
     avatarViewerImages.push({
       src: convertLocalSrc(person.avatar),
       caption: `${fullName} · 圆形头像`,
@@ -554,9 +554,9 @@ export default function PersonDetailPage() {
   return (
     <div className="person-detail-page">
       {/* 头部信息 */}
-      <div className={`person-detail-header ${person.avatarRect ? 'has-rect-avatar' : ''}`}>
+      <div className={`person-detail-header ${canDisplaySrc(person.avatarRect) ? 'has-rect-avatar' : ''}`}>
         <div className="person-detail-avatar">
-          {person.avatarRect ? (
+          {canDisplaySrc(person.avatarRect) ? (
             // 矩形原图视图：左侧整图 + 右侧文字信息
             <img
               src={convertLocalSrc(person.avatarRect)}
@@ -564,8 +564,9 @@ export default function PersonDetailPage() {
               className="rect-avatar-img clickable"
               onClick={() => setViewerAvatar('avatarRect')}
               title="点击查看大图（可缩放）"
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
             />
-          ) : person.avatar ? (
+          ) : canDisplaySrc(person.avatar) ? (
             // 圆形头像视图
             <img
               src={convertLocalSrc(person.avatar)}
@@ -573,6 +574,7 @@ export default function PersonDetailPage() {
               className={`clickable ${person.isDefaultPerspective ? 'perspective-border' : ''}`}
               onClick={() => setViewerAvatar('avatar')}
               title="点击查看大图（可缩放）"
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
             />
           ) : (
             <div className={`avatar-placeholder ${person.isDefaultPerspective ? 'perspective-border' : ''}`}>
@@ -727,8 +729,12 @@ export default function PersonDetailPage() {
                   className="relation-card"
                 >
                   <div className="avatar avatar-sm">
-                    {r.person.avatar ? (
-                      <img src={convertLocalSrc(r.person.avatar)} alt="" />
+                    {canDisplaySrc(r.person.avatar) ? (
+                      <img
+                        src={convertLocalSrc(r.person.avatar)}
+                        alt=""
+                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                      />
                     ) : (
                       r.person.surname
                     )}

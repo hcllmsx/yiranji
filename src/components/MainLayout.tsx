@@ -30,6 +30,7 @@ export default function MainLayout() {
   // 云端有更新时的顶部提示条
   const [remoteBanner, setRemoteBanner] = useState<RemoteSyncMeta | null>(null);
   const [pulling, setPulling] = useState(false);
+  const [showWebNotice, setShowWebNotice] = useState(false);
 
   // 另存为弹窗与结果通知（toast）
   const [saveAsOpen, setSaveAsOpen] = useState(false);
@@ -202,6 +203,21 @@ export default function MainLayout() {
 
         {/* 侧边栏底部 */}
         <div className="sidebar-footer">
+          {!isTauri() && (
+            <span
+              className="sidebar-web-notice-btn"
+              onClick={() => setShowWebNotice(true)}
+              style={{ cursor: 'pointer' }}
+              role="button"
+              title="网页版没有直接写入本地磁盘文件的权限，不会修改您电脑上的 project.json，你的操作会实时保存到浏览器的 localStorage 里。（点击查看详细说明）"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="16" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12.01" y2="8" />
+              </svg>
+            </span>
+          )}
           <span
             className="sidebar-feedback-link"
             onClick={() => openUrl(FEEDBACK_URL)}
@@ -216,6 +232,7 @@ export default function MainLayout() {
             onClick={() => openUrl('https://github.com/hcllmsx/yiranji')}
             style={{ cursor: 'pointer' }}
             role="link"
+            title="开源仓库：hcllmsx/yiranji 点击前往"
           >
             <img src="/github.svg" alt="GitHub" className="sidebar-github-icon" />
           </span>
@@ -277,6 +294,38 @@ export default function MainLayout() {
           </span>
           <span className="saveas-toast-text">{toast.text}</span>
           <button className="saveas-toast-close" aria-label="关闭">✕</button>
+        </div>
+      )}
+
+      {/* 网页版数据保存说明弹窗 */}
+      {showWebNotice && (
+        <div className="custom-dialog-overlay" onClick={() => setShowWebNotice(false)}>
+          <div className="custom-dialog-box animate-scale-in" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
+            <div className="custom-dialog-header">
+              <span className="custom-dialog-icon">ℹ️</span>
+              <span className="custom-dialog-title">网页版数据保存说明</span>
+            </div>
+            <div className="custom-dialog-message" style={{ textAlign: 'left', lineHeight: '1.6', fontSize: '13.5px' }}>
+              <p style={{ margin: '0 0 10px 0' }}>
+                1. <strong>无磁盘直接写入权限</strong>：网页版受浏览器安全沙箱限制，<strong>无法直接修改</strong>您电脑磁盘上的 <code>project.json</code> 原始文件。
+              </p>
+              <p style={{ margin: '0 0 10px 0' }}>
+                2. <strong>实时保存至浏览器缓存</strong>：您的新建、修改、删除等所有操作，均已<strong>实时自动保存到当前浏览器的 localStorage（本地缓存）</strong>中，刷新网页不会丢失。
+              </p>
+              <p style={{ margin: 0 }}>
+                3. <strong>如需导出最新工程数据</strong>：请点击左侧导航栏的<strong>「另存为」→「导出 JSON 数据」</strong>，即可将最新修改的数据下载保存为新的 JSON 文件。
+              </p>
+            </div>
+            <div className="custom-dialog-buttons">
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => setShowWebNotice(false)}
+              >
+                我知道了
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

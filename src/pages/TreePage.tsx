@@ -36,7 +36,7 @@ import {
   hasManualOrder,
   type SiblingOrderMap,
 } from '../utils/siblingOrder';
-import { convertLocalSrc } from '../utils/tauri';
+import { convertLocalSrc, canDisplaySrc } from '../utils/tauri';
 import {
   getTreeLayoutMode,
   setTreeLayoutMode,
@@ -275,17 +275,30 @@ function PersonNode({ data }: { data: PersonNodeData }) {
       <Handle type="target" position={Position.Left} id="left-target" style={{ opacity: 0 }} />
 
       <div
-        className={`tree-node-avatar${person.avatar ? ' clickable' : ''}`}
-        title={person.avatar ? '点击查看头像大图' : undefined}
+        className={`tree-node-avatar${canDisplaySrc(person.avatar) ? ' clickable' : ''}`}
+        title={canDisplaySrc(person.avatar) ? '点击查看头像大图' : undefined}
         onClick={(e) => {
-          if (!person.avatar) return;
+          if (!canDisplaySrc(person.avatar)) return;
           e.stopPropagation();
           setAvatarViewerOpen(true);
         }}
         onDoubleClick={(e) => e.stopPropagation()}
       >
-        {person.avatar ? (
-          <img src={convertLocalSrc(person.avatar)} alt={fullName} />
+        {canDisplaySrc(person.avatar) ? (
+          <img
+            src={convertLocalSrc(person.avatar)}
+            alt={fullName}
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              const parent = e.currentTarget.parentElement;
+              if (parent && !parent.querySelector('.avatar-fallback-text')) {
+                const span = document.createElement('span');
+                span.className = 'avatar-fallback-text';
+                span.textContent = person.surname || fullName.slice(0, 1);
+                parent.appendChild(span);
+              }
+            }}
+          />
         ) : (
           person.surname
         )}
@@ -2419,8 +2432,12 @@ function TreePageContent() {
                     onClick={() => handleSwitchPerspective(p.id)}
                   >
                     <span className={`perspective-picker-avatar ${p.gender}`}>
-                      {p.avatar ? (
-                        <img src={convertLocalSrc(p.avatar)} alt={name} />
+                      {canDisplaySrc(p.avatar) ? (
+                        <img
+                          src={convertLocalSrc(p.avatar)}
+                          alt={name}
+                          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                        />
                       ) : (
                         (p.surname || '·').slice(0, 1)
                       )}
@@ -2484,8 +2501,12 @@ function TreePageContent() {
                       >
                         <span className="sort-index">{index + 1}</span>
                         <span className={`perspective-picker-avatar ${row.person.gender}`}>
-                          {row.person.avatar ? (
-                            <img src={convertLocalSrc(row.person.avatar)} alt={name} />
+                          {canDisplaySrc(row.person.avatar) ? (
+                            <img
+                              src={convertLocalSrc(row.person.avatar)}
+                              alt={name}
+                              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                            />
                           ) : (
                             (row.person.surname || '·').slice(0, 1)
                           )}

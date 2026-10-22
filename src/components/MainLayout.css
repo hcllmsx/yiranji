@@ -124,6 +124,23 @@
   display: block;
 }
 
+.sidebar-web-notice-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  color: #ef4444;
+  opacity: 0.85;
+}
+
+.sidebar-web-notice-btn:hover {
+  background-color: var(--color-bg-hover);
+  opacity: 1;
+  transform: scale(1.08);
+}
+
 .sidebar-save-dot {
   width: 8px;
   height: 8px;

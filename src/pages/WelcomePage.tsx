@@ -510,6 +510,7 @@ export default function WelcomePage() {
           onClick={() => openUrl('https://github.com/hcllmsx/yiranji')}
           style={{ cursor: 'pointer' }}
           role="link"
+          title="开源仓库：hcllmsx/yiranji 点击前往"
         >
           以苒纪
         </span> v{__APP_VERSION__}

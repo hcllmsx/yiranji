@@ -13,7 +13,7 @@ import {
   formatAge,
 } from '../utils';
 import { Lunar } from 'lunar-javascript';
-import { isTauri, convertLocalSrc, saveMediaFile, deleteMediaFile } from '../utils/tauri';
+import { isTauri, convertLocalSrc, canDisplaySrc, saveMediaFile, deleteMediaFile } from '../utils/tauri';
 import AvatarCropModal from '../components/AvatarCropModal';
 import type { Person, Gender, LunarDate, SpouseRelationType, ChildRelationType, Relations, AdoptiveParentGroup } from '../types';
 import {
@@ -1507,8 +1507,13 @@ export default function PersonEditPage() {
                 id="avatar-circle-upload"
               />
               <div onClick={handleImageClick('circle')} style={{ cursor: 'pointer', height: '100%', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {avatar ? (
-                  <img src={convertLocalSrc(avatar)} alt="圆形头像" className="avatar-preview" />
+                {canDisplaySrc(avatar) ? (
+                  <img
+                    src={convertLocalSrc(avatar)}
+                    alt="圆形头像"
+                    className="avatar-preview"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
                 ) : (
                   <div className="avatar-upload-placeholder">
                     <span className="upload-icon">📷</span>
@@ -1567,8 +1572,13 @@ export default function PersonEditPage() {
                 id="avatar-rect-upload"
               />
               <div onClick={handleImageClick('rect')} style={{ cursor: 'pointer', height: '100%', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {avatarRect ? (
-                  <img src={convertLocalSrc(avatarRect)} alt="形象大图" className="avatar-rect-preview" />
+                {canDisplaySrc(avatarRect) ? (
+                  <img
+                    src={convertLocalSrc(avatarRect)}
+                    alt="形象大图"
+                    className="avatar-rect-preview"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
                 ) : (
                   <div className="avatar-rect-placeholder">
                     <span className="upload-icon">🖼️</span>
