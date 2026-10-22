@@ -209,7 +209,7 @@ export default function MainLayout() {
               onClick={() => setShowWebNotice(true)}
               style={{ cursor: 'pointer' }}
               role="button"
-              title="网页版没有直接写入本地磁盘文件的权限，不会修改您电脑上的 project.json，你的操作会实时保存到浏览器的 localStorage 里。（点击查看详细说明）"
+              title="网页版不会修改您电脑上的 project.json（点击查看详细说明）"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
