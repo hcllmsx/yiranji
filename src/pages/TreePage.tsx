@@ -1382,7 +1382,7 @@ function TreePageContent() {
         }
       }
 
-      // 养父母（支持数组）
+      // 养父母（支持数组，使用 parentLabeled 使选中时的标签贴在卡片底部正下方）
       const adoptFathers = getAdoptiveFathers(person.relations);
       adoptFathers.forEach(afId => {
         const key = `adopt-f-${afId}->${person.id}`;
@@ -1394,7 +1394,7 @@ function TreePageContent() {
             target: person.id,
             sourceHandle: 'bottom',
             targetHandle: 'top',
-            type: 'smoothstep',
+            type: 'parentLabeled',
             style: { stroke: '#b1b1b7', strokeWidth: 1.5, strokeDasharray: '6,4' },
           });
         }
@@ -1410,7 +1410,7 @@ function TreePageContent() {
             target: person.id,
             sourceHandle: 'bottom',
             targetHandle: 'top',
-            type: 'smoothstep',
+            type: 'parentLabeled',
             style: { stroke: '#b1b1b7', strokeWidth: 1.5, strokeDasharray: '6,4' },
           });
         }
