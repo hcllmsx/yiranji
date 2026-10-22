@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { lockBodyScroll } from '../utils/bodyScrollLock';
-import { convertLocalSrc } from '../utils/tauri';
+import { isTauri, convertLocalSrc } from '../utils/tauri';
 import './AvatarCropModal.css';
 
 interface AvatarCropModalProps {
@@ -432,7 +432,13 @@ export default function AvatarCropModal({ imageSrc, onClose, onSave, initTab = '
           <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft: syncSourceImage ? '0' : 'auto' }} onClick={onClose}>
             取消
           </button>
-          <button type="button" className="btn btn-primary btn-sm" onClick={handleSave}>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={!isTauri() ? undefined : handleSave}
+            disabled={!isTauri()}
+            title={!isTauri() ? '网页版仅供界面预览，不支持保存头像，请使用桌面版客户端' : undefined}
+          >
             确认保存
           </button>
         </div>

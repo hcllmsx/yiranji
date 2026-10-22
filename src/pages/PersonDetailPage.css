@@ -437,6 +437,18 @@
   color: var(--color-accent);
 }
 
+.add-media-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-color: var(--color-border);
+  color: var(--color-text-tertiary);
+}
+
+.add-media-btn:disabled:hover {
+  border-color: var(--color-border);
+  color: var(--color-text-tertiary);
+}
+
 .media-delete-btn {
   position: absolute;
   top: var(--space-2);

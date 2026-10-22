@@ -177,6 +177,17 @@ a:hover {
   transform: scale(0.97);
 }
 
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  pointer-events: auto;
+}
+
+.btn:disabled:hover {
+  transform: none;
+}
+
 .btn-primary {
   background-color: var(--color-accent);
   color: var(--color-text-inverse);

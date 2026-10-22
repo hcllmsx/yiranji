@@ -131,6 +131,20 @@
   transform: translateY(-1px);
 }
 
+.welcome-btn-open:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.welcome-btn-open:disabled:hover {
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+  transform: none;
+}
+
 /* 最近项目 */
 .welcome-recent {
   width: 100%;

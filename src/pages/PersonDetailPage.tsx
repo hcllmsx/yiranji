@@ -793,9 +793,15 @@ export default function PersonDetailPage() {
             ＋ 添加照片
           </label>
         ) : (
-          <div className="media-web-hint" style={{ marginTop: person.photos.length > 0 ? '10px' : 0, fontSize: '13px', color: 'var(--color-text-tertiary)' }}>
-            网页版仅供开发预览，不支持上传照片，请使用桌面版客户端。
-          </div>
+          <button
+            type="button"
+            className="add-media-btn"
+            disabled
+            style={{ marginTop: person.photos.length > 0 ? '12px' : 0 }}
+            title="网页版仅供界面预览，不支持上传照片，请使用桌面版客户端"
+          >
+            ＋ 添加照片
+          </button>
         )}
       </div>
 
@@ -836,9 +842,15 @@ export default function PersonDetailPage() {
             ＋ 添加音频
           </label>
         ) : (
-          <div className="media-web-hint" style={{ marginTop: person.audioFiles.length > 0 ? '10px' : 0, fontSize: '13px', color: 'var(--color-text-tertiary)' }}>
-            网页版仅供开发预览，不支持上传音频，请使用桌面版客户端。
-          </div>
+          <button
+            type="button"
+            className="add-media-btn"
+            disabled
+            style={{ marginTop: person.audioFiles.length > 0 ? '12px' : 0 }}
+            title="网页版仅供界面预览，不支持上传音频，请使用桌面版客户端"
+          >
+            ＋ 添加音频
+          </button>
         )}
       </div>
 
@@ -909,9 +921,15 @@ export default function PersonDetailPage() {
             ＋ 添加视频
           </label>
         ) : (
-          <div className="media-web-hint" style={{ marginTop: person.videoFiles.length > 0 ? '10px' : 0, fontSize: '13px', color: 'var(--color-text-tertiary)' }}>
-            网页版仅供开发预览，不支持上传视频，请使用桌面版客户端。
-          </div>
+          <button
+            type="button"
+            className="add-media-btn"
+            disabled
+            style={{ marginTop: person.videoFiles.length > 0 ? '12px' : 0 }}
+            title="网页版仅供界面预览，不支持上传视频，请使用桌面版客户端"
+          >
+            ＋ 添加视频
+          </button>
         )}
       </div>
 

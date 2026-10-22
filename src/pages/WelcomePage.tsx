@@ -336,7 +336,7 @@ export default function WelcomePage() {
             <span>新建家谱</span>
           </button>
 
-          {isTauri() && (
+          {isTauri() ? (
             <>
               <button
                 className="welcome-btn-open"
@@ -354,11 +354,30 @@ export default function WelcomePage() {
                 <span>📜</span>
                 <span>打开文件</span>
               </button>
-
             </>
-          )}
-          {!isTauri() && (
+          ) : (
             <>
+              <button
+                type="button"
+                className="welcome-btn-open"
+                disabled
+                style={{ width: '220px', display: 'inline-flex', justifyContent: 'center', marginTop: '4px' }}
+                title="网页版不支持打开本地文件夹，请使用桌面版客户端"
+              >
+                <span>📂</span>
+                <span>打开文件夹</span>
+              </button>
+              <button
+                type="button"
+                className="welcome-btn-open"
+                disabled
+                style={{ width: '220px', display: 'inline-flex', justifyContent: 'center' }}
+                title="网页版不支持打开本地文件，请使用桌面版客户端"
+              >
+                <span>📜</span>
+                <span>打开文件</span>
+              </button>
+
               {/* 导入导出JSON数据的功能为开发时调整前端时专用，请勿将此功能显示到桌面版中。 */}
               <button
                 className="welcome-btn-open"
