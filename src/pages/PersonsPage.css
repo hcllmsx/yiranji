@@ -79,6 +79,12 @@
   box-shadow: 0 0 0 1px var(--color-accent-lighter);
 }
 
+.person-card.is-placeholder {
+  border-style: dashed;
+  opacity: 0.85;
+  background-color: var(--color-bg-secondary);
+}
+
 .person-card-avatar {
   width: 72px;
   height: 72px;

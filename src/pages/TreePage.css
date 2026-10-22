@@ -270,6 +270,31 @@
   box-shadow: var(--shadow-sm);
 }
 
+.tree-person-node.is-placeholder {
+  border-style: dashed !important;
+  opacity: 0.85;
+  background-color: var(--color-bg-secondary, #fafafa);
+}
+
+.tree-node-placeholder-tag {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  padding: 1px 6px;
+  background-color: var(--color-text-tertiary, #9ca3af);
+  border-radius: var(--radius-sm, 4px);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+  z-index: 2;
+}
+
 /* 空状态 */
 .tree-empty {
   display: flex;
