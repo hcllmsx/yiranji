@@ -106,13 +106,17 @@ function writeSavedViewport(projectId: string | null, viewport: SavedViewport) {
 interface PersonNodeData {
   person: Person;
   isPerspective: boolean;
+  /** 侧栏卡片类型：attached = 关系附属（养/继父母、第二配偶等），isolated = 真孤立 */
+  sideKind?: 'attached' | 'isolated';
   showCoordinates?: boolean;
   onHoverStart?: (personId: string) => void;
   onHoverEnd?: () => void;
+  /** 手动输入坐标后提交：写入自定义布局快照，保证切换视图/重开后仍保留 */
+  onCoordinateCommit?: (personId: string, x: number, y: number) => void;
 }
 
 function PersonNode({ data }: { data: PersonNodeData }) {
-  const { person, isPerspective, showCoordinates, onHoverStart, onHoverEnd } = data;
+  const { person, isPerspective, sideKind, showCoordinates, onHoverStart, onHoverEnd, onCoordinateCommit } = data;
   const navigate = useNavigate();
   const project = useFamilyStore((state) => state.project);
   const isAnonymized = useFamilyStore((state) => state.isAnonymized);
@@ -125,7 +129,7 @@ function PersonNode({ data }: { data: PersonNodeData }) {
     personsMap,
     project?.meta.siblingOrder
   );
-  // 反向称谓：主视角该叫此人什么（用于"他叫我 X"）
+  // 反向称谓：我对该人而言是什么（用于“我是他 X”）
   const isPerspectiveSelf = !!perspectiveId && person.id === perspectiveId;
   const reverseRelationText =
     !isPerspectiveSelf && perspectiveId
@@ -180,7 +184,12 @@ function PersonNode({ data }: { data: PersonNodeData }) {
     const newX = parseFloat(editX);
     const newY = parseFloat(editY);
     if (!isNaN(newX) && !isNaN(newY)) {
-      handleUpdateCoordinates(newX, newY);
+      // 优先交给父级提交（同时写入自定义布局快照）；没有回调时只更新画布
+      if (onCoordinateCommit) {
+        onCoordinateCommit(person.id, newX, newY);
+      } else {
+        handleUpdateCoordinates(newX, newY);
+      }
     }
     setIsEditing(false);
   };
@@ -226,7 +235,7 @@ function PersonNode({ data }: { data: PersonNodeData }) {
 
   return (
     <div
-      className={`tree-person-node ${person.gender} ${isPerspective ? 'perspective' : ''}`}
+      className={`tree-person-node ${person.gender} ${isPerspective ? 'perspective' : ''}${sideKind ? ` side-${sideKind}` : ''}`}
       onDoubleClick={() => navigate(`/person/${person.id}`)}
       onMouseEnter={() => onHoverStart?.(person.id)}
       onMouseLeave={() => onHoverEnd?.()}
@@ -237,7 +246,7 @@ function PersonNode({ data }: { data: PersonNodeData }) {
         <div className="tree-node-perspective-tag">★</div>
       )}
 
-      {/* 悬停关系气泡：我叫他什么 + 他叫我什么 */}
+      {/* 悬停关系气泡：我对他而言是什么 + 他对我而言是什么 */}
       {relationText && (
         <div className="tree-node-relation-badge">
           {isPerspectiveSelf ? (
@@ -246,14 +255,14 @@ function PersonNode({ data }: { data: PersonNodeData }) {
             <span className="tree-node-relation-line">家族成员</span>
           ) : (
             <>
-              <span className="tree-node-relation-line">
-                我叫{selfPronoun}：{relationText}
-              </span>
               {reverseRelationText && (
-                <span className="tree-node-relation-line tree-node-relation-back">
-                  {selfPronoun}叫我：{reverseRelationText}
+                <span className="tree-node-relation-line">
+                  我是{selfPronoun}：{reverseRelationText}
                 </span>
               )}
+              <span className={`tree-node-relation-line${reverseRelationText ? ' tree-node-relation-back' : ''}`}>
+                {selfPronoun}是我：{relationText}
+              </span>
             </>
           )}
         </div>
@@ -618,9 +627,9 @@ function TreePageContent() {
         const nextEdges = prevEdges.map((edge) => {
           const nextStyle = { ...edge.style };
           const isSpouse = edge.id.startsWith('spouse-');
-          const isAdopt = edge.id.startsWith('adopt-');
+          const isThin = edge.id.startsWith('adopt-') || edge.id.startsWith('step-');
           nextStyle.stroke = isSpouse ? '#71717a' : '#b1b1b7';
-          nextStyle.strokeWidth = isAdopt ? 1.5 : 2;
+          nextStyle.strokeWidth = isThin ? 1.5 : 2;
           delete nextStyle.opacity;
           return {
             ...edge,
@@ -661,7 +670,7 @@ function TreePageContent() {
         const nextEdges = prevEdges.map((edge) => {
           const nextStyle = { ...edge.style };
           const isSpouse = edge.id.startsWith('spouse-');
-          const isAdopt = edge.id.startsWith('adopt-');
+          const isThin = edge.id.startsWith('adopt-') || edge.id.startsWith('step-');
 
           if (pathEdgeIds.has(edge.id)) {
             // 路径上的连线：琥珀色加粗 + 流动动画
@@ -684,7 +693,7 @@ function TreePageContent() {
 
           // 路径外的连线淡化
           nextStyle.stroke = isSpouse ? '#71717a' : '#b1b1b7';
-          nextStyle.strokeWidth = isAdopt ? 1.5 : 2;
+          nextStyle.strokeWidth = isThin ? 1.5 : 2;
           nextStyle.opacity = 0.15;
           return {
             ...edge,
@@ -828,9 +837,9 @@ function TreePageContent() {
           // 其他无关连线，不透明度调至 10%
           const nextStyle = { ...edge.style };
           const isSpouse = edge.id.startsWith('spouse-');
-          const isAdopt = edge.id.startsWith('adopt-');
+          const isThin = edge.id.startsWith('adopt-') || edge.id.startsWith('step-');
           nextStyle.stroke = isSpouse ? '#71717a' : '#b1b1b7';
-          nextStyle.strokeWidth = isAdopt ? 1.5 : 2;
+          nextStyle.strokeWidth = isThin ? 1.5 : 2;
           nextStyle.opacity = 0.1;
           return {
             ...edge,
@@ -973,6 +982,25 @@ function TreePageContent() {
     onConfirm: () => void;
   } | null>(null);
 
+  // 手动输入坐标 = 一次布局修改：更新画布位置、写入自定义布局快照，
+  // 并切到「自定义位置」视图，保证切回默认布局再切回时坐标仍然保留。
+  const handleCoordinateCommit = useCallback(
+    (personId: string, x: number, y: number) => {
+      const nextNodes = getNodes().map((n) =>
+        n.id === personId ? { ...n, position: { x, y } } : n
+      );
+      setNodes(nextNodes);
+      const layout: Record<string, { x: number; y: number }> = {};
+      nextNodes.forEach((n) => {
+        layout[n.id] = { x: Math.round(n.position.x), y: Math.round(n.position.y) };
+      });
+      saveCustomLayout(layout);
+      useDefaultLayoutRef.current = false;
+      setIsDefaultLayoutView(false);
+    },
+    [getNodes, setNodes, saveCustomLayout]
+  );
+
   // 从人员数据构建节点和边
   const buildGraph = useCallback(() => {
     const personsList = Object.values(project?.persons || {});
@@ -990,6 +1018,7 @@ function TreePageContent() {
         showCoordinates: showCoordinatesRef.current,
         onHoverStart: handleHoverStart,
         onHoverEnd: handleHoverEnd,
+        onCoordinateCommit: handleCoordinateCommit,
       },
     }));
 
@@ -1112,7 +1141,40 @@ function TreePageContent() {
       });
     });
 
-
+    // ====== 继父母不直接连孩子：继母经由生父、继父经由生母中转 ======
+    // 继父母是生父母再婚的配偶，与孩子之间没有直系关系，直接连线会误导。
+    // 继父母与生父母互为配偶时，图上已有「配偶」边可作中转；
+    // 没有记录配偶关系时，补一条同款点线把两端接起来。
+    personsList.forEach((person) => {
+      const rel = person.relations;
+      const relays: Array<{ stepId?: string; anchorId?: string }> = [
+        { stepId: rel.stepMother, anchorId: rel.father || rel.mother },
+        { stepId: rel.stepFather, anchorId: rel.mother || rel.father },
+      ];
+      relays.forEach(({ stepId, anchorId }) => {
+        if (!stepId || !anchorId || stepId === anchorId) return;
+        if (!project?.persons[stepId] || !project?.persons[anchorId]) return;
+        const hasSpouseEdge = graphEdges.some(
+          (e) =>
+            e.id.startsWith('spouse-') &&
+            ((e.source === stepId && e.target === anchorId) ||
+              (e.source === anchorId && e.target === stepId))
+        );
+        if (hasSpouseEdge) return;
+        const key = `step-link-${stepId}->${anchorId}`;
+        if (edgeSet.has(key)) return;
+        edgeSet.add(key);
+        graphEdges.push({
+          id: key,
+          source: stepId,
+          target: anchorId,
+          sourceHandle: 'bottom',
+          targetHandle: 'top',
+          type: 'smoothstep',
+          style: { stroke: '#b1b1b7', strokeWidth: 1.5, strokeDasharray: '2,5' },
+        });
+      });
+    });
 
     // ====== 全新 Reingold-Tilford 树形布局算法实现 ======
     const layouted = graphNodes;
@@ -1453,43 +1515,128 @@ function TreePageContent() {
       }
     });
 
-    // ====== Bug 1 修复：将未被布局算法处理的孤立节点放置在家谱树右下方空白区域 ======
-    const orphanNodes = layouted.filter(n => !processedNodeIds.has(n.id));
-    if (orphanNodes.length > 0) {
-      // 计算已布局节点的边界范围
-      let maxX = -Infinity;
-      let maxY = -Infinity;
+    // ====== 未进入主树布局的节点：按主树左右空间放到较空的一侧 ======
+    // 这类节点分两种：
+    //   1) 关系附属卡：与主树中的人仍有直接关系（第二配偶、养父母、继父母…），
+    //      只是布局算法没把它们纳入主干；
+    //   2) 真孤立：没有任何关系（新建未指定关系，或坏数据被清理后残留）。
+    // 两者放同一侧，用节点配色区分；侧栏位置随主树伸展方向自动换边。
+    // 注意：customLayout / 画布实时位置只约束主树节点，侧栏卡片始终跟随主树，
+    // 所以等主树坐标最终确定后，还会再调用一次 placeSideCards()。
+    const placeSideCards = () => {
+      const orphanNodes = layouted.filter(n => !processedNodeIds.has(n.id));
+      if (orphanNodes.length === 0) return;
+      // 主树包围盒（主视角已平移到原点，但这里按实际坐标统计）
+      let treeMinX = Infinity;
+      let treeMaxX = -Infinity;
+      let treeMinY = Infinity;
       layouted.forEach(n => {
-        if (processedNodeIds.has(n.id)) {
-          if (n.position.x > maxX) maxX = n.position.x;
-          if (n.position.y > maxY) maxY = n.position.y;
-        }
+        if (!processedNodeIds.has(n.id)) return;
+        if (n.position.x < treeMinX) treeMinX = n.position.x;
+        if (n.position.x > treeMaxX) treeMaxX = n.position.x;
+        if (n.position.y < treeMinY) treeMinY = n.position.y;
       });
-      // 如果没有已布局的节点，使用默认起点
-      if (maxX === -Infinity) maxX = 0;
-      if (maxY === -Infinity) maxY = 0;
+      if (!Number.isFinite(treeMinX)) {
+        treeMinX = 0;
+        treeMaxX = 0;
+        treeMinY = 0;
+      }
 
-      // 将孤立节点放在右侧空白区域；互为配偶的节点成对水平排列（男左女右），其余纵向排列
-      const orphanStartX = maxX + 400;
-      const orphanStartY = 0;
+      // 相对主视角看，主树向哪边伸得更远，那边在屏幕上就更满，侧栏改放到另一边
+      const pivotX = nodeMap.get(perspectiveId || '')?.position.x ?? 0;
+      const placeLeft = treeMaxX - pivotX > pivotX - treeMinX;
+      const sideGap = 400;
+      const orphanStartX = placeLeft ? treeMinX - sideGap : treeMaxX + sideGap;
+      const orphanStartY = treeMinY;
       const orphanGapY = 180;
       const spouseGapX = 200; // 配偶水平间距，与 layoutSubtree 家庭块一致
       const orphanIdSet = new Set(orphanNodes.map(n => n.id));
+
+      // 与主树仍有直接关系 → 关系附属卡；否则是真孤立。
+      // 双向都算：本人的父母/配偶/子女在主树，或主树里有人反过来指向本人
+      // （新加的养父往往只记在子女一侧的 adoptiveFathers 里，养父自己的 children 可能为空）。
+      const inboundRefs = new Map<string, Set<string>>();
+      Object.values(project?.persons || {}).forEach((p) => {
+        const rel = p.relations;
+        const refs = [
+          rel.father,
+          rel.mother,
+          rel.stepFather,
+          rel.stepMother,
+          ...getAdoptiveFathers(rel),
+          ...getAdoptiveMothers(rel),
+          ...(rel.spouses || []).map(s => s.id),
+          ...(rel.children || []).map(c => c.id),
+        ].filter(Boolean) as string[];
+        refs.forEach((id) => {
+          let set = inboundRefs.get(id);
+          if (!set) {
+            set = new Set();
+            inboundRefs.set(id, set);
+          }
+          set.add(p.id);
+        });
+      });
+
+      const isAttachedToTree = (nodeId: string): boolean => {
+        const rel = project?.persons[nodeId]?.relations;
+        if (rel) {
+          const linked = [
+            rel.father,
+            rel.mother,
+            rel.stepFather,
+            rel.stepMother,
+            ...getAdoptiveFathers(rel),
+            ...getAdoptiveMothers(rel),
+            ...(rel.spouses || []).map(s => s.id),
+            ...(rel.children || []).map(c => c.id),
+          ].filter(Boolean) as string[];
+          if (linked.some(id => processedNodeIds.has(id))) return true;
+        }
+        const refs = inboundRefs.get(nodeId);
+        if (!refs) return false;
+        for (const refId of refs) {
+          if (processedNodeIds.has(refId)) return true;
+        }
+        return false;
+      };
+
+      // 关系附属卡排在前面，真孤立排在后面，中间空出一截
+      const orderedOrphans = [...orphanNodes].sort(
+        (a, b) => Number(!isAttachedToTree(a.id)) - Number(!isAttachedToTree(b.id))
+      );
+
       const placedOrphanIds = new Set<string>();
       let orphanRow = 0;
+      let gapRows = 0;
+      let lastKind: 'attached' | 'isolated' | null = null;
 
-      orphanNodes.forEach((node) => {
+      const takeRowY = (kind: 'attached' | 'isolated'): number => {
+        if (lastKind && lastKind !== kind) gapRows += 0.6;
+        lastKind = kind;
+        const y = orphanStartY + (orphanRow + gapRows) * orphanGapY;
+        orphanRow += 1;
+        return y;
+      };
+
+      // 把“侧栏卡片”类型写回节数据，卡片据此换配色
+      const markKind = (node: Node, kind: 'attached' | 'isolated') => {
+        node.data = { ...node.data, sideKind: kind };
+      };
+
+      orderedOrphans.forEach((node) => {
         if (placedOrphanIds.has(node.id)) return;
 
         const person = (node.data as any)?.person as Person | undefined;
         const spouses = person?.relations?.spouses || [];
+        const kind = isAttachedToTree(node.id) ? 'attached' : 'isolated';
 
         // 寻找也在孤立节点列表中、且尚未处理的配偶
         const spouseEntry = spouses.find(s =>
           orphanIdSet.has(s.id) && !placedOrphanIds.has(s.id)
         );
 
-        const y = orphanStartY + orphanRow * orphanGapY;
+        const y = takeRowY(kind);
 
         if (spouseEntry && person) {
           const spouseObj = project?.persons[spouseEntry.id];
@@ -1512,9 +1659,10 @@ function TreePageContent() {
             rightNode.position.x = orphanStartX + spouseGapX;
             rightNode.position.y = y;
 
+            markKind(leftNode, kind);
+            markKind(rightNode, kind);
             placedOrphanIds.add(node.id);
             placedOrphanIds.add(spouseEntry.id);
-            orphanRow++;
             return;
           }
         }
@@ -1522,10 +1670,12 @@ function TreePageContent() {
         // 无配偶或配偶不在孤立节点中，纵向排列
         node.position.x = orphanStartX;
         node.position.y = y;
+        markKind(node, kind);
         placedOrphanIds.add(node.id);
-        orphanRow++;
       });
-    }
+    };
+    // 先摆一次，让后面的防重合扫描把侧栏卡片也纳入考虑
+    placeSideCards();
 
     // ====== 防重合兜底：扫描所有已定位节点，强制消除卡片横向重叠 ======
     // 无论重合来自何种边角情况（双重布局、孤立节点、估算误差），此扫描保证最终不重叠。
@@ -1570,25 +1720,6 @@ function TreePageContent() {
       }
       if (!moved) break;
     }
-
-    // 根据配偶双方最终对齐完毕后的物理 X 轴坐标，动态分配连接点 Handles，确保配偶连线始终水平且不产生穿透
-    graphEdges.forEach((edge) => {
-      if (edge.id.startsWith('spouse-')) {
-        const sourceNode = nodeMap.get(edge.source);
-        const targetNode = nodeMap.get(edge.target);
-        if (sourceNode && targetNode) {
-          if (sourceNode.position.x < targetNode.position.x) {
-            // source (丈夫) 在左，target (妻子) 在右
-            edge.sourceHandle = 'right-source';
-            edge.targetHandle = 'left-target';
-          } else {
-            // source (丈夫) 在右，target (妻子) 在左
-            edge.sourceHandle = 'left-source';
-            edge.targetHandle = 'right-target';
-          }
-        }
-      }
-    });
 
     // ====== 新增：全局平移，将主视角人员的几何中心（即位置）对齐到原点 (0,0) ======
     const perspectiveNode = layouted.find(n => n.id === perspectiveId);
@@ -1641,7 +1772,33 @@ function TreePageContent() {
           });
         }
       }
+
+      // 主树坐标（customLayout / 画布实时位置）到这里才最终确定。
+      // 旧版快照没有记录侧栏卡坐标，历史值可能把卡片钉在主树内部，
+      // 这种情况按最终包围盒重新摆位；用户拖动 / 手动输入过坐标后的快照带标记，
+      // 侧栏卡坐标属于用户意图，原样保留。
+      if (!project?.sideCardsPinned) placeSideCards();
     }
+
+    // 所有节点坐标（含侧栏卡换边、自定义位置）到这里才最终确定，
+    // 再根据配偶双方的物理 X 轴分配连接点 Handles，保证配偶连线始终走最近的一侧。
+    graphEdges.forEach((edge) => {
+      if (edge.id.startsWith('spouse-')) {
+        const sourceNode = nodeMap.get(edge.source);
+        const targetNode = nodeMap.get(edge.target);
+        if (sourceNode && targetNode) {
+          if (sourceNode.position.x < targetNode.position.x) {
+            // source (丈夫) 在左，target (妻子) 在右
+            edge.sourceHandle = 'right-source';
+            edge.targetHandle = 'left-target';
+          } else {
+            // source (丈夫) 在右，target (妻子) 在左
+            edge.sourceHandle = 'left-source';
+            edge.targetHandle = 'right-target';
+          }
+        }
+      }
+    });
 
     setNodes(layouted);
     // 渲染时把配偶边连线也一同展示给 React Flow，并默认让配偶连线在最上层
@@ -1651,7 +1808,7 @@ function TreePageContent() {
       return scoreA - scoreB;
     });
     setEdges(defaultSortedEdges);
-  }, [project?.persons, project?.meta.defaultPerspectiveId, project?.meta.siblingOrder, setNodes, setEdges, getNodes, handleHoverStart, handleHoverEnd, treeLayoutMode]);
+  }, [project?.persons, project?.meta.defaultPerspectiveId, project?.meta.siblingOrder, project?.sideCardsPinned, setNodes, setEdges, getNodes, handleHoverStart, handleHoverEnd, handleCoordinateCommit, treeLayoutMode]);
 
   useEffect(() => {
     buildGraph();

@@ -53,21 +53,24 @@ function buildAdjacency(persons: Record<string, any>): Map<string, AdjEdge[]> {
     }
 
     // 养父母 / 继父母（penalty=3，生父母路径优先）
+    // 反向的“父母 → 子女”边必须带 养/继 语义，否则养父母会被推导成亲生父母
+    const adoptedChildStep: KinStep = p.gender === 'male' ? 'AS' : 'AD';
+    const stepChildStep: KinStep = p.gender === 'male' ? 'SS' : 'SD';
     getAdoptiveFathers(r).forEach((afId) => {
       add(p.id, afId, 'AF', 3);
-      add(afId, p.id, childStep, 3);
+      add(afId, p.id, adoptedChildStep, 3);
     });
     getAdoptiveMothers(r).forEach((amId) => {
       add(p.id, amId, 'AM', 3);
-      add(amId, p.id, childStep, 3);
+      add(amId, p.id, adoptedChildStep, 3);
     });
     if (r.stepFather && persons[r.stepFather]) {
       add(p.id, r.stepFather, 'SF', 3);
-      add(r.stepFather, p.id, childStep, 3);
+      add(r.stepFather, p.id, stepChildStep, 3);
     }
     if (r.stepMother && persons[r.stepMother]) {
       add(p.id, r.stepMother, 'SM', 3);
-      add(r.stepMother, p.id, childStep, 3);
+      add(r.stepMother, p.id, stepChildStep, 3);
     }
 
     // 配偶（姻亲 penalty=2，血亲路径优先；同性配偶同样按 丈夫/妻子 走）
@@ -318,6 +321,59 @@ function ancestorTitle(steps: KinStep[], ids: string[], persons: Record<string, 
 }
 
 /**
+ * 非单调路径（先上、再下、又往上）的称谓，典型情形是「妹妹的养父」：
+ *   我 → 父亲 → 妹妹 → 妹妹的养父（steps = F, D, AF）。
+ * 养/继父母在辈分上等同于生父母，所以妹妹的养父是我的父辈；
+ * 父系 / 母系决定 伯叔姑 / 舅姨，长幼与路径上第一位同辈参考人比较。
+ * 不适用（路径本身单调，或净辈分为同辈及晚辈）时返回空串，交给常规推导。
+ */
+function reentrantTitle(
+  steps: KinStep[],
+  ids: string[],
+  persons: Record<string, any>,
+  selfId: string,
+  order?: SiblingOrderMap
+): string {
+  let descended = false;
+  let reentrant = false;
+  let net = 0;
+  for (const s of steps) {
+    if (DOWN_STEPS.has(s)) {
+      descended = true;
+      net -= 1;
+    } else {
+      if (descended) reentrant = true;
+      net += 1;
+    }
+  }
+  if (!reentrant || net <= 0) return '';
+
+  const target = persons[ids[ids.length - 1]];
+  if (!target) return '';
+  const female = target.gender === 'female';
+  const paternal = steps[0] === 'F' || steps[0] === 'AF' || steps[0] === 'SF';
+
+  // 参考人：路径上第一个到达目标辈分的亲属，用来判断伯 / 叔
+  let acc = 0;
+  let peer = persons[selfId];
+  for (let i = 0; i < steps.length - 1; i++) {
+    acc += DOWN_STEPS.has(steps[i]) ? -1 : 1;
+    if (acc === net) {
+      peer = persons[ids[i + 1]] || peer;
+      break;
+    }
+  }
+  const older = olderThan(target, peer, order);
+  const core = female
+    ? (paternal ? '姑' : '姨')
+    : (paternal ? (older ? '伯' : '叔') : '舅');
+
+  if (net === 1) return core + (female ? '母' : '父');
+  const genName = ANCESTOR_GEN[net - 2] || `${net}世祖`;
+  return core + (female ? genName.replace(/祖父$/, '祖母') : genName);
+}
+
+/**
  * 向上 + 向下的旁系路径：兄弟姐妹 / 伯叔姑舅姨 / 堂表兄弟姐妺 / 侄甥等
  *
  * 统一按三个维度命名，避免"某个 K/L 组合没覆盖到就退化成祖辈亲戚"：
@@ -345,6 +401,10 @@ function collateralTitle(
   const firstUp = ups[0];
   const adoptPrefix =
     firstUp === 'AF' || firstUp === 'AM' ? '养' : firstUp === 'SF' || firstUp === 'SM' ? '继' : '';
+
+  // 先上后下再往上（妹妹的养父等）单独推导，避免被当成「外甥」
+  const reentrant = reentrantTitle(steps, ids, persons, selfId, order);
+  if (reentrant) return reentrant;
 
   // 兄弟姐妹（含排行称呼）
   if (K === 1 && L === 1) {
@@ -597,9 +657,27 @@ export function getRelationshipText(
 // ==================== 关系路径 → 连线高亮辅助 ====================
 
 /**
+ * 继父母与孩子之间的中转人：继母对应生父、继父对应生母（缺失时回退到另一位亲本）。
+ * 不是继父母关系时返回 null。
+ */
+function stepAnchorId(
+  childId: string,
+  stepId: string,
+  persons: Record<string, any>
+): string | null {
+  const rel = persons[childId]?.relations;
+  if (!rel) return null;
+  if (rel.stepMother === stepId) return rel.father || rel.mother || null;
+  if (rel.stepFather === stepId) return rel.mother || rel.father || null;
+  return null;
+}
+
+/**
  * 把路径中相邻两人映射到家谱树上实际绘制的连线 id。
  * 夫妻边直接匹配；父母边因"共用一条线"可能只绘有生父→子女的边，
  * 此时回退到该子女任意父母的连线。
+ * 继父母不与孩子直连，图上走「继父母 — 生父母 — 孩子」中转，
+ * 这里相应展开成两段高亮。
  */
 export function findPathEdgeIds(
   ids: string[],
@@ -610,18 +688,38 @@ export function findPathEdgeIds(
   for (let i = 0; i < ids.length - 1; i++) {
     const u = ids[i];
     const v = ids[i + 1];
+
+    // 继父母→孩子：拆成「继父母—生父母」与「生父母→孩子」两条线
+    const stepChild = stepAnchorId(u, v, persons) ? u : stepAnchorId(v, u, persons) ? v : null;
+    if (stepChild) {
+      const stepId = stepChild === u ? v : u;
+      const anchorId = stepAnchorId(stepChild, stepId, persons);
+      if (anchorId) {
+        const linkEdge = edges.find(
+          (e) =>
+            (e.source === stepId && e.target === anchorId) ||
+            (e.source === anchorId && e.target === stepId)
+        );
+        const parentEdge = edges.find((e) => e.source === anchorId && e.target === stepChild);
+        if (linkEdge) result.push(linkEdge.id);
+        if (parentEdge) result.push(parentEdge.id);
+        continue;
+      }
+    }
+
     let found = edges.find(
       (e) => (e.source === u && e.target === v) || (e.source === v && e.target === u)
     );
     if (!found) {
-      const child =
-        persons[u]?.relations && (persons[u].relations.father === v || persons[u].relations.mother === v)
-          ? u
-          : persons[v]?.relations && (persons[v].relations.father === u || persons[v].relations.mother === u)
-            ? v
-            : null;
+      // 同一对父母可能共用一条线，只画了其中一边；
+      // 生父母 / 养父母都算，只要孩子的任意父母到孩子的连线存在即可。
+      const child = collectParentKeys(persons[u]?.relations).includes(v)
+        ? u
+        : collectParentKeys(persons[v]?.relations).includes(u)
+          ? v
+          : null;
       if (child) {
-        const parentIds = [persons[child]?.relations?.father, persons[child]?.relations?.mother].filter(Boolean);
+        const parentIds = collectParentKeys(persons[child]?.relations);
         found = edges.find((e) => parentIds.includes(e.source) && e.target === child);
       }
     }

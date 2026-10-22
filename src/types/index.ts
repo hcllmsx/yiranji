@@ -178,6 +178,12 @@ export interface FamilyProject {
   meta: FamilyMeta;
   persons: Record<string, Person>;
   customLayout?: Record<string, { x: number; y: number }>;
+  /**
+   * 自定义布局快照是否已包含侧栏卡片（养/继父母、多配偶等）的坐标。
+   * 旧版快照没有这个标记，加载时会重新摆位侧栏卡，避免把历史遗留的
+   * 错误坐标当成用户意图；用户拖动或手动输入坐标后快照带上标记，此后原样恢复。
+   */
+  sideCardsPinned?: boolean;
 }
 
 /** 最近打开的项目记录 */

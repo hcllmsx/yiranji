@@ -491,6 +491,8 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     const updated = {
       ...project,
       customLayout: layout,
+      // 快照由用户当前的完整布局生成（含侧栏卡坐标），恢复时原样应用
+      sideCardsPinned: true,
     };
     set({ project: updated, isDirty: true });
     autoSave(get);
@@ -499,7 +501,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
   clearCustomLayout: () => {
     const { project } = get();
     if (!project) return;
-    const { customLayout, ...rest } = project;
+    const { customLayout, sideCardsPinned, ...rest } = project;
     set({ project: rest as FamilyProject, isDirty: true });
     autoSave(get);
   },

@@ -590,9 +590,9 @@
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
   z-index: 50;
-  width: 130px;
-  min-width: 130px;
-  max-width: min(130px, calc(100vw - 32px));
+  width: 190px;
+  min-width: 190px;
+  max-width: min(190px, calc(100vw - 32px));
   box-sizing: border-box;
   padding: var(--space-1) 0;
   animation: slideDown 0.15s ease-out;

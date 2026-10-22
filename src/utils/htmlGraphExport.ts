@@ -3,7 +3,7 @@
 // 与 htmlExport.ts 的「大纲/思维导图」不同，这里导出的是**卡片脉络图**：
 // - 与家谱树一致的代际分层、夫妻同块、父子/母子共用连线
 // - 浏览器里可滚轮缩放、拖拽平移、一键适应窗口
-// - 悬浮卡片显示「我叫他 / 他叫我」双向称呼（相对当前主视角）
+// - 悬浮卡片显示「我是他 / 他是我」双向称呼（相对当前主视角）
 // - 右上角可切换主视角（称谓矩阵在导出时已算全，浏览器端零推导）
 // - 纯静态单文件，零依赖，只读不可编辑，发给别人双击即可打开
 //
@@ -408,18 +408,18 @@ export async function buildGraphHtml(
       const isGenericReciprocalRelation =
         !isSelf && targetTitle === '家族成员' && backTitle === '家族成员';
       // 双向称谓相同时只显示一次通用关系，避免重复提示。
+      const pronoun = box.person.gender === 'male' ? '他' : '她';
       const rel = isGenericReciprocalRelation
         ? '家族成员'
-        : targetTitle && !isSelf
-          ? `我叫${box.person.gender === 'male' ? '他' : '她'}：${targetTitle}`
+        : backTitle && !isSelf
+          ? `我是${pronoun}：${backTitle}`
           : isSelf
             ? '★ 当前主视角'
             : '';
-      const relBack = backTitle
-        ? isGenericReciprocalRelation
-          ? ''
-          : `${persons[perspectiveId!]?.gender === 'male' ? '他' : '她'}叫我：${backTitle}`
-        : '';
+      const relBack =
+        !isSelf && !isGenericReciprocalRelation && targetTitle
+          ? `${pronoun}是我：${targetTitle}`
+          : '';
       const html = renderCard(
         box.person,
         index,
@@ -780,7 +780,7 @@ ${cardHtml}
     <div class="picker-head">
       <div>
         <div class="picker-title">切换主视角</div>
-        <div class="picker-sub">切换后，卡片悬浮显示的「我叫他 / 他叫我」会以该成员为基准重新计算</div>
+        <div class="picker-sub">切换后，卡片悬浮显示的「我是他 / 他是我」会以该成员为基准重新计算</div>
       </div>
       <button class="picker-close" id="pickerClose" title="关闭">✕</button>
     </div>
@@ -967,8 +967,8 @@ ${badgeHtml}
           card.setAttribute('data-rel', '家族成员');
           card.setAttribute('data-rel-back', '');
         } else {
-          card.setAttribute('data-rel', '我叫' + letterOf(j) + '：' + targetTitle);
-          card.setAttribute('data-rel-back', letterOf(idx) + '叫我：' + backTitle);
+          card.setAttribute('data-rel', backTitle ? '我是' + letterOf(j) + '：' + backTitle : '');
+          card.setAttribute('data-rel-back', targetTitle ? letterOf(j) + '是我：' + targetTitle : '');
         }
       }
     });
