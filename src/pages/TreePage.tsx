@@ -2639,24 +2639,15 @@ function TreePageContent() {
       <div className="tree-page">
         <div className="tree-toolbar">
           <div className="tree-toolbar-left">
-            <h3>家谱树</h3>
-          </div>
-          {currentFilePath && (
-            <div className="tree-filepath-indicator" style={{
-              fontSize: '12px',
-              color: 'var(--color-text-tertiary)',
-              fontFamily: 'monospace',
-              opacity: 0.7,
-              marginLeft: 'auto',
-              marginRight: '20px',
-              maxWidth: '50%',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap'
-            }} title={currentFilePath}>
-              {currentFilePath}
+            <div className="tree-toolbar-title-row">
+              <h3>家谱树</h3>
             </div>
-          )}
+            {currentFilePath && (
+              <div className="tree-filepath-indicator" title={currentFilePath}>
+                📁 {currentFilePath}
+              </div>
+            )}
+          </div>
         </div>
         <div className="tree-container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
           <div className="tree-empty">
@@ -2676,27 +2667,18 @@ function TreePageContent() {
     <div className="tree-page">
       <div className="tree-toolbar">
         <div className="tree-toolbar-left">
-          <h3>家谱树</h3>
-          <span style={{ fontSize: '0.875rem', color: 'var(--color-text-tertiary)' }}>
-            共 {persons.length} 人
-          </span>
-        </div>
-        {currentFilePath && (
-          <div className="tree-filepath-indicator" style={{
-            fontSize: '12px',
-            color: 'var(--color-text-tertiary)',
-            fontFamily: 'monospace',
-            opacity: 0.7,
-            marginLeft: 'auto',
-            marginRight: '20px',
-            maxWidth: '40%',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap'
-          }} title={currentFilePath}>
-            📁 {currentFilePath}
+          <div className="tree-toolbar-title-row">
+            <h3>家谱树</h3>
+            <span className="tree-toolbar-count">
+              共 {persons.length} 人
+            </span>
           </div>
-        )}
+          {currentFilePath && (
+            <div className="tree-filepath-indicator" title={currentFilePath}>
+              📁 {currentFilePath}
+            </div>
+          )}
+        </div>
         <div className="tree-toolbar-right">
           <button className="btn btn-sm btn-secondary" onClick={() => navigate('/person/new/edit')}>
             添加人员
