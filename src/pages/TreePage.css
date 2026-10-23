@@ -104,23 +104,18 @@
 }
 
 .tree-person-node.perspective {
-  border: 1.5px solid var(--color-border);
   position: relative;
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(var(--color-bg-card), var(--color-bg-card)) padding-box,
+    linear-gradient(to bottom, #ff3366, #ff9933, #ffff33, #33cc66, #3399ff, #9933ff) border-box left center / 12px 100% no-repeat,
+    var(--color-border) border-box;
   box-shadow: 0 0 0 2px oklch(58% 0.18 25 / 0.15), var(--shadow-md);
 }
 
-/* 用左侧 4px 宽的伪元素替代原本的单色性别左边框 */
-.tree-person-node.perspective::before {
-  content: '';
-  position: absolute;
-  top: -1.5px;
-  left: -1.5px;
-  bottom: -1.5px;
-  width: 4px;
-  background: linear-gradient(to bottom, #ff3366, #ff9933, #ffff33, #33cc66, #3399ff, #9933ff);
-  border-top-left-radius: var(--radius-md);
-  border-bottom-left-radius: var(--radius-md);
-  z-index: 5;
+.tree-person-node.perspective:hover {
+  box-shadow: 0 0 0 2px oklch(58% 0.18 25 / 0.35), var(--shadow-hover);
+  border-color: transparent;
 }
 
 .tree-person-node.male {
@@ -153,10 +148,10 @@
   filter: grayscale(0.15);
 }
 
-/* 主视角节点覆盖单色左边框 */
+/* 主视角节点左边框与普通节点尺寸严格一致（4px），颜色为透明以完整显露底层彩虹渐变与圆角咬合 */
 .tree-person-node.perspective.male,
 .tree-person-node.perspective.female {
-  border-left: 1.5px solid var(--color-border) !important;
+  border-left: 4px solid transparent !important;
 }
 
 /* 关系提示气泡（两行：我是他 / 他是我） */
