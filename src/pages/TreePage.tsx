@@ -856,10 +856,11 @@ function TreePageContent() {
       if (pathIdsSet && pathIdsSet.size > 0) {
         pathIdsSet.forEach((pid) => {
           const person = personsMap[pid];
-          const primarySpouseId = getPrimarySpouseId(person);
-          if (primarySpouseId && !pathIdsSet!.has(primarySpouseId)) {
-            semiSpouseSet.add(primarySpouseId);
-          }
+          (person?.relations.spouses || []).forEach((sp) => {
+            if (sp.id && !pathIdsSet!.has(sp.id)) {
+              semiSpouseSet.add(sp.id);
+            }
+          });
         });
       }
     }
@@ -989,16 +990,17 @@ function TreePageContent() {
       );
       const pathNodeIds = new Set<string>(path?.ids || (activeId === perspectiveId && perspectiveId ? [perspectiveId] : []));
 
-      // 收集黄线卡片与其原配偶之间的半显连线配对（双向记录）
+      // 收集黄线卡片与其配偶之间的半显连线配对（双向记录）
       const semiSpousePairSet = new Set<string>();
       if (pathNodeIds.size > 0) {
         pathNodeIds.forEach((pid) => {
           const person = personsMap[pid];
-          const primarySpouseId = getPrimarySpouseId(person);
-          if (primarySpouseId && !pathNodeIds.has(primarySpouseId)) {
-            semiSpousePairSet.add(`${pid}:${primarySpouseId}`);
-            semiSpousePairSet.add(`${primarySpouseId}:${pid}`);
-          }
+          (person?.relations.spouses || []).forEach((sp) => {
+            if (sp.id && !pathNodeIds.has(sp.id)) {
+              semiSpousePairSet.add(`${pid}:${sp.id}`);
+              semiSpousePairSet.add(`${sp.id}:${pid}`);
+            }
+          });
         });
       }
 
@@ -1725,17 +1727,20 @@ function TreePageContent() {
         node.position.y = currentY;
       }
 
-      // 本人及配偶组成的家庭块
+      // 本人及配偶组成的家庭块（支持单配偶与多配偶并排）
       const spouses = person.relations.spouses || [];
-      const hasSpouse = spouses.length > 0;
+      const validSpouses = spouses.filter(
+        (s) => Boolean(s.id) && nodeMap.has(s.id) && s.id !== personId
+      );
 
       subPositions[personId] = 0;
       let familyLeft = -70;
       let familyRight = 70;
       let familyCenter = 0;
 
-      if (hasSpouse) {
-        const spouseId = spouses[0].id;
+      if (validSpouses.length === 1) {
+        // 单配偶：本人在 0，配偶在 200
+        const spouseId = validSpouses[0].id;
         subPositions[spouseId] = 200;
         familyRight = 270;
         familyCenter = 100;
@@ -1743,6 +1748,32 @@ function TreePageContent() {
         if (spouseNode) {
           spouseNode.position.y = currentY;
         }
+      } else if (validSpouses.length >= 2) {
+        // 多配偶排布：
+        // 首任配偶（原配/前配偶）：放在本人左侧 -200
+        // 第二任配偶（现任/续弦）：放在本人右侧 +200
+        // 若有更多配偶（第3位及之后）：依次往右顺延 +400, +600...
+        const leftSpouse = validSpouses[0];
+        subPositions[leftSpouse.id] = -200;
+        const leftSpouseNode = nodeMap.get(leftSpouse.id);
+        if (leftSpouseNode) {
+          leftSpouseNode.position.y = currentY;
+        }
+        familyLeft = -270;
+
+        for (let i = 1; i < validSpouses.length; i++) {
+          const rightSpouse = validSpouses[i];
+          const rightX = 200 * i;
+          subPositions[rightSpouse.id] = rightX;
+          const rightSpouseNode = nodeMap.get(rightSpouse.id);
+          if (rightSpouseNode) {
+            rightSpouseNode.position.y = currentY;
+          }
+          if (rightX + 70 > familyRight) {
+            familyRight = rightX + 70;
+          }
+        }
+        familyCenter = (familyLeft + 70 + familyRight - 70) / 2;
       }
 
       subContour[currentY] = { left: familyLeft, right: familyRight };
@@ -3104,33 +3135,7 @@ function TreePageContent() {
   );
 }
 
-/**
- * 获取人物的原配偶 ID：
- * 多个配偶时只显示一个原配偶（优先结婚日期最早；若无日期则取列表第一位，即使离异或已故）。
- */
-function getPrimarySpouseId(person: Person | undefined): string | null {
-  if (!person || !person.relations || !person.relations.spouses || person.relations.spouses.length === 0) {
-    return null;
-  }
-  const spouses = person.relations.spouses.filter((s) => Boolean(s.id));
-  if (spouses.length === 0) return null;
-  if (spouses.length === 1) return spouses[0].id;
 
-  let earliest = spouses[0];
-  let earliestDate = earliest.marriageDate || '';
-
-  for (let i = 1; i < spouses.length; i++) {
-    const s = spouses[i];
-    if (s.marriageDate) {
-      if (!earliestDate || s.marriageDate < earliestDate) {
-        earliest = s;
-        earliestDate = s.marriageDate;
-      }
-    }
-  }
-
-  return earliest.id;
-}
 
 export default function TreePage() {
   return (
