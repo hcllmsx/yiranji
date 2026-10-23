@@ -1089,7 +1089,7 @@ export default function SettingsPage() {
                               disabled={!!syncBusy || !isTauri()}
                             >
                               {syncBusy === 'test' && <span className="btn-spinner" />}
-                              {syncBusy === 'test' ? '连接中…' : '测试连接'}
+                              {syncBusy === 'test' ? '连接中…' : '⚡ 测试连接'}
                             </button>
                             <button
                               type="button"
@@ -1098,7 +1098,7 @@ export default function SettingsPage() {
                               disabled={!!syncBusy || !isTauri()}
                             >
                               {syncBusy === 'push' && <span className="btn-spinner" />}
-                              {syncBusy === 'push' ? '上传中…' : '上传到云端'}
+                              {syncBusy === 'push' ? '上传中…' : '⤴️ 上传到云端'}
                             </button>
                             <button
                               type="button"
@@ -1107,7 +1107,7 @@ export default function SettingsPage() {
                               disabled={!!syncBusy || !isTauri()}
                             >
                               {syncBusy === 'pull' && <span className="btn-spinner" />}
-                              {syncBusy === 'pull' ? '拉取中…' : '从云端拉取'}
+                              {syncBusy === 'pull' ? '拉取中…' : '⤵️ 从云端拉取'}
                             </button>
                           </div>
 
@@ -1313,7 +1313,7 @@ export default function SettingsPage() {
             onClick={handleCheckUpdate}
             disabled={isCheckingUpdate}
           >
-            {isCheckingUpdate ? '⏳ 检查中…' : '🔄 检查更新'}
+            {isCheckingUpdate ? '⏳ 检查中…' : '检查更新'}
           </button>
         </div>
         <div className="settings-footer-links-line">

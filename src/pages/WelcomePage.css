@@ -281,3 +281,40 @@
   user-select: none;
   line-height: 1;
 }
+
+/* 模态框右上角圆圈叉叉关闭按钮 */
+.modal-close-icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  color: var(--color-text-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.modal-close-icon-btn:hover {
+  color: var(--color-danger, #dc2626);
+  background-color: rgba(220, 38, 38, 0.08);
+}
+
+/* 模态框底部居中纯文字按钮（无边框背景） */
+.welcome-cloud-text-btn {
+  background: none;
+  border: none;
+  padding: 6px 12px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.15s ease;
+}
+
+.welcome-cloud-text-btn:hover {
+  color: var(--color-accent);
+}

@@ -37,6 +37,7 @@ export default function WelcomePage() {
   const [cloudProjects, setCloudProjects] = useState<RemoteProject[]>([]);
   const [restoringDir, setRestoringDir] = useState('');
   const [showCloudConfig, setShowCloudConfig] = useState(false);
+  const [isCloudDisabled, setIsCloudDisabled] = useState(false);
   const [cloudSyncConfig, setCloudSyncConfig] = useState(() => getSyncSettings());
 
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -257,15 +258,26 @@ export default function WelcomePage() {
     }
   };
 
-  // 从云端获取家谱（若未配置账号直接在弹窗内提供配置，无需进入内部设置）
+  // 从云端获取家谱（严格响应总开关与未配置状态）
   const handleOpenCloud = async () => {
     const sync = getSyncSettings();
     setCloudSyncConfig(sync);
     setShowCloudModal(true);
+    setCloudError('');
+
     if (!isSyncConfigured(sync)) {
+      setIsCloudDisabled(false);
       setShowCloudConfig(true);
       return;
     }
+
+    if (!sync.enabled) {
+      setIsCloudDisabled(true);
+      setShowCloudConfig(false);
+      return;
+    }
+
+    setIsCloudDisabled(false);
     setShowCloudConfig(false);
     await loadCloudList(sync);
   };
@@ -457,14 +469,14 @@ export default function WelcomePage() {
                 style={{ width: '220px', display: 'inline-flex', justifyContent: 'center' }}
               >
                 <span>📜</span>
-                <span>打开文件</span>
+                <span>打开 YRJ 档案</span>
               </button>
               <button
                 className="welcome-btn-open"
                 onClick={handleOpenCloud}
                 style={{ width: '220px', display: 'inline-flex', justifyContent: 'center' }}
               >
-                <span>☁️</span>
+                <span>🌐</span>
                 <span>从云端获取</span>
               </button>
               {showSampleButton && (
@@ -823,19 +835,57 @@ export default function WelcomePage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3>从云端获取家谱</h3>
-              {!showCloudConfig && (
-                <button
-                  type="button"
-                  style={{ background: 'none', border: 'none', color: 'var(--color-accent)', cursor: 'pointer', fontSize: '12.5px' }}
-                  onClick={() => { setShowCloudConfig(true); setCloudError(''); }}
-                >
-                  ⚙️ WebDAV 设置
-                </button>
-              )}
+              <h3 style={{ margin: 0 }}>从云端获取家谱</h3>
+              <button
+                type="button"
+                className="modal-close-icon-btn"
+                disabled={!!restoringDir}
+                onClick={() => setShowCloudModal(false)}
+                title="关闭"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="15" y1="9" x2="9" y2="15"></line>
+                  <line x1="9" y1="9" x2="15" y2="15"></line>
+                </svg>
+              </button>
             </div>
             <div className="modal-body" style={{ maxHeight: '420px', overflowY: 'auto' }}>
-              {showCloudConfig ? (
+              {isCloudDisabled ? (
+                <div style={{ textAlign: 'center', padding: '28px 16px', color: 'var(--color-text-secondary)' }}>
+                  <div style={{ fontSize: '32px', marginBottom: '10px' }}>🔒</div>
+                  <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: '8px' }}>
+                    云同步功能当前已停用
+                  </div>
+                  <div style={{ fontSize: '13px', color: 'var(--color-text-tertiary)', lineHeight: '1.6', marginBottom: '20px' }}>
+                    本机已保存 WebDAV 配置（{cloudSyncConfig.username}），但设置中的多设备云同步总开关处于关闭状态。
+                  </div>
+                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={async () => {
+                        const updated = saveSyncSettings({ enabled: true });
+                        setCloudSyncConfig(updated);
+                        setIsCloudDisabled(false);
+                        await loadCloudList(updated);
+                      }}
+                    >
+                      立即启用并连接
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        setIsCloudDisabled(false);
+                        setShowCloudConfig(true);
+                      }}
+                    >
+                      检查配置
+                    </button>
+                  </div>
+                </div>
+              ) : showCloudConfig ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', margin: 0 }}>
                     填写 WebDAV 云盘服务地址与应用密码，换电脑也能轻松拉取：
@@ -940,27 +990,37 @@ export default function WelcomePage() {
                 </div>
               )}
             </div>
-            <div className="modal-footer">
+            <div className="modal-footer" style={showCloudConfig ? { gap: '12px' } : { justifyContent: 'center' }}>
               {showCloudConfig ? (
                 <>
                   {isSyncConfigured(getSyncSettings()) && (
-                    <button className="btn btn-secondary" onClick={() => setShowCloudConfig(false)}>
-                      取消返回
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        setShowCloudConfig(false);
+                        const curSync = getSyncSettings();
+                        if (!curSync.enabled) {
+                          setIsCloudDisabled(true);
+                        }
+                      }}
+                    >
+                      返回
                     </button>
                   )}
                   <button className="btn btn-primary" onClick={handleSaveCloudConfig}>
                     保存并连接云端
                   </button>
                 </>
-              ) : (
+              ) : !isCloudDisabled ? (
                 <button
-                  className="btn btn-secondary"
-                  disabled={!!restoringDir}
-                  onClick={() => setShowCloudModal(false)}
+                  type="button"
+                  className="welcome-cloud-text-btn"
+                  onClick={() => { setShowCloudConfig(true); setCloudError(''); }}
                 >
-                  关闭
+                  <span>⚙️</span>
+                  <span>WebDAV 设置</span>
                 </button>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
