@@ -512,3 +512,21 @@ export async function getSettingsFilePath(): Promise<string | null> {
   if (!api) return null;
   return api.invoke<string>('get_settings_file_path');
 }
+
+export interface FolderStats {
+  totalBytes: number;
+  fileCount: number;
+  dirCount: number;
+}
+
+/** 递归统计工作区文件夹的总字节大小、文件数量与目录数量 */
+export async function getWorkspaceStats(workspacePath: string): Promise<FolderStats> {
+  const api = await getTauriApi();
+  if (!api || !workspacePath) return { totalBytes: 0, fileCount: 0, dirCount: 0 };
+  try {
+    return await api.invoke<FolderStats>('get_workspace_stats', { workspacePath });
+  } catch (err) {
+    console.warn('获取工作区统计信息失败:', err);
+    return { totalBytes: 0, fileCount: 0, dirCount: 0 };
+  }
+}

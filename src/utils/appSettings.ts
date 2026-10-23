@@ -23,10 +23,6 @@ export interface SyncSettings {
   remoteRoot: string;
   /** 打开档案时自动检查云端是否有更新 */
   autoCheck: boolean;
-  /** 保存档案后自动把改动传到云端（静默、去抖，失败不影响保存） */
-  autoPush: boolean;
-  /** 允许用本地覆盖云端的较新版本 */
-  forceOverwrite: boolean;
 }
 
 export const DEFAULT_SYNC_SETTINGS: SyncSettings = {
@@ -36,8 +32,6 @@ export const DEFAULT_SYNC_SETTINGS: SyncSettings = {
   password: '',
   remoteRoot: 'yiranji',
   autoCheck: true,
-  autoPush: false,
-  forceOverwrite: false,
 };
 
 const SYNC_STORAGE_KEY = 'yiranji_sync_settings_v1';

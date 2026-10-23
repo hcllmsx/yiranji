@@ -1,4 +1,4 @@
-/* 设置页面样式 */
+﻿/* 设置页面样式 */
 
 .settings-page {
   padding: var(--space-6) var(--space-8);
@@ -448,48 +448,131 @@
 
 /* ==================== 多设备同步 ==================== */
 
-.sync-preset-row {
+.sync-provider-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--color-border-light);
+  margin-bottom: 18px;
+}
+
+.sync-provider-tab {
+  padding: 8px 18px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: -1px;
+}
+
+.sync-provider-tab:hover {
+  color: var(--color-text-primary);
+}
+
+.sync-provider-tab.active {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+  font-weight: 600;
+}
+
+.sync-others-placeholder {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  justify-content: center;
+  padding: 56px 20px;
+  color: var(--color-text-tertiary);
+  font-size: 13.5px;
+  background-color: var(--color-bg-card);
+  border: 1px dashed var(--color-border-light);
+  border-radius: var(--radius-md);
+  margin: 10px 0 16px;
+}
+
+.sync-server-root-row {
+  display: grid;
+  grid-template-columns: 3fr 1fr;
+  gap: 16px;
   margin-bottom: 14px;
 }
 
-.sync-preset-label {
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-}
-
-.sync-preset-btn {
-  padding: 3px 10px;
-  font-size: 12px;
-  line-height: 1.6;
-  border-radius: 999px;
-  border: 1px solid var(--color-border);
-  background-color: var(--color-bg-card);
+.sync-cloud-location-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  font-size: 13px;
   color: var(--color-text-secondary);
-  cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  border-top: 1px solid var(--color-border-light);
+  border-bottom: 1px solid var(--color-border-light);
+  border-left: none;
+  border-right: none;
+  border-radius: 0;
+  padding: 6px 0;
+  margin: 12px 0 16px;
 }
 
-.sync-preset-btn:hover {
+.sync-cloud-location-box strong {
   color: var(--color-accent);
-  border-color: var(--color-accent-light);
+  font-family: var(--font-mono, monospace);
+  font-weight: 600;
 }
 
-.sync-two-col {
+.sync-account-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  margin-bottom: 14px;
 }
 
 .sync-status-card {
-  margin: 4px 0 14px;
-  padding: 12px 14px;
+  margin: 14px 0;
   background-color: var(--color-bg-input);
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-md);
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+}
+
+.sync-status-info {
+  flex: 1;
+  padding: 12px 14px;
+  min-width: 0;
+}
+
+.sync-status-gradient-badge {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 24px 0 60px;
+  min-width: 260px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  user-select: none;
+  border: none;
+}
+
+/* 从左到右平滑延展渐变，无任何左边框竖线，贴合右边缘 */
+.sync-status-gradient-badge.connected {
+  background: linear-gradient(to right, transparent 0%, rgba(22, 163, 74, 0.03) 25%, rgba(22, 163, 74, 0.18) 100%);
+  color: #15803d;
+}
+
+.sync-status-gradient-badge.error {
+  background: linear-gradient(to right, transparent 0%, rgba(220, 38, 38, 0.03) 25%, rgba(220, 38, 38, 0.18) 100%);
+  color: #b91c1c;
+}
+
+.sync-status-gradient-badge.untested {
+  background: linear-gradient(to right, transparent 0%, rgba(156, 163, 175, 0.02) 25%, rgba(156, 163, 175, 0.12) 100%);
+  color: var(--color-text-tertiary);
 }
 
 .sync-status-line {
@@ -517,106 +600,65 @@
   color: var(--color-warning, #c2752e);
 }
 
-.sync-actions {
+.sync-actions-row {
   display: flex;
+  align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  margin: 16px 0;
 }
 
-.sync-options {
+.btn-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: btn-spin 0.6s linear infinite;
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
+}
+
+.sync-switch-options {
   display: flex;
-  gap: 18px;
-  flex-wrap: wrap;
-  margin-top: 14px;
-}
-
-.sync-check {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-}
-
-.sync-check input {
-  margin: 0;
-  cursor: pointer;
-}
-
-/* ---- 换电脑 / 从云端恢复 ---- */
-.sync-restore {
-  margin-top: 18px;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px dashed var(--color-border-light);
+  border-top: 1px solid var(--color-border-light);
 }
 
-.sync-restore-head {
+.sync-switch-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 16px;
+  padding: 4px 0;
 }
 
-.sync-restore-head strong {
-  display: block;
-  font-size: 13.5px;
+.sync-switch-title {
+  font-size: 13px;
+  font-weight: 500;
   color: var(--color-text-primary);
-  margin-bottom: 4px;
 }
 
-.sync-restore-head span {
-  font-size: 12.5px;
-  color: var(--color-text-secondary);
-}
-
-.sync-restore-list {
-  list-style: none;
-  margin: 12px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.sync-restore-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-md);
-  background-color: var(--color-bg-secondary);
-}
-
-.sync-restore-info {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-
-.sync-restore-info strong {
-  font-size: 13.5px;
-  color: var(--color-text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sync-restore-info span {
+.sync-switch-desc {
   font-size: 12px;
   color: var(--color-text-tertiary);
+  margin-top: 2px;
 }
 
 @media (max-width: 720px) {
-  .sync-two-col {
+  .sync-server-root-row,
+  .sync-account-row {
     grid-template-columns: 1fr;
   }
 }
-
 /* ===== 家谱树显示模式选择 ===== */
 .tree-mode-options {
   display: flex;

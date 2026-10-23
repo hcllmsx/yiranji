@@ -227,7 +227,7 @@ fn install_sample_workspace(app: tauri::AppHandle, force: Option<bool>) -> Resul
         .app_data_dir()
         .map_err(|e| format!("无法定位应用数据目录: {}", e))?
         .join("samples")
-        .join("以苒纪示例家谱");
+        .join("示例家谱");
     let dest_project = dest.join("project.json");
 
     let should_copy = if force.unwrap_or(false) || !dest_project.is_file() || cfg!(debug_assertions) {
@@ -244,7 +244,7 @@ fn install_sample_workspace(app: tauri::AppHandle, force: Option<bool>) -> Resul
         }
         copy_dir_recursive(&src, &dest).map_err(|e| format!("释放示例家谱失败: {}", e))?;
     }
-    Ok(dest.to_string_lossy().replace('\\', "/"))
+    Ok(dest.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
@@ -650,6 +650,49 @@ fn get_app_logs(app: tauri::AppHandle) -> Result<Vec<(String, String)>, String> 
     Ok(Vec::new())
 }
 
+#[derive(serde::Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderStats {
+    pub total_bytes: u64,
+    pub file_count: usize,
+    pub dir_count: usize,
+}
+
+#[tauri::command]
+fn get_workspace_stats(workspace_path: String) -> Result<FolderStats, String> {
+    let p = std::path::Path::new(&workspace_path);
+    if !p.is_dir() {
+        return Ok(FolderStats::default());
+    }
+    let mut total_bytes = 0u64;
+    let mut file_count = 0usize;
+    let mut dir_count = 0usize;
+
+    let mut stack = vec![p.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        let entries = match fs::read_dir(&current) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                dir_count += 1;
+                stack.push(path);
+            } else if let Ok(meta) = entry.metadata() {
+                file_count += 1;
+                total_bytes += meta.len();
+            }
+        }
+    }
+
+    Ok(FolderStats {
+        total_bytes,
+        file_count,
+        dir_count,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -706,7 +749,9 @@ pub fn run() {
             webdav::webdav_pull,
             settings::load_app_settings,
             settings::save_app_settings,
-            settings::get_settings_file_path
+            settings::get_settings_file_path,
+            get_workspace_stats,
+            get_workspace_stats
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

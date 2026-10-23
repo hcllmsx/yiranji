@@ -75,11 +75,23 @@ function loadProject(projectId: string): FamilyProject | null {
 
 /** 自动升级旧版养父母数据结构为新版数组格式（已并入 dataMigration，保留入口注释） */
 
+function normalizeNativePath(p?: string | null): string {
+  if (!p) return '';
+  if (/^[a-zA-Z]:[\\/]/.test(p)) {
+    return p.replace(/\//g, '\\');
+  }
+  return p;
+}
+
 function getRecentProjects(): RecentProject[] {
   const raw = localStorage.getItem(RECENT_KEY);
   if (!raw) return [];
   try {
-    return JSON.parse(raw) as RecentProject[];
+    const list = JSON.parse(raw) as RecentProject[];
+    return list.map((item) => ({
+      ...item,
+      filePath: normalizeNativePath(item.filePath),
+    }));
   } catch {
     return [];
   }
@@ -88,48 +100,6 @@ function getRecentProjects(): RecentProject[] {
 function saveRecentProjects(projects: RecentProject[]) {
   localStorage.setItem(RECENT_KEY, JSON.stringify(projects));
   saveRecentProjectsList(projects);
-}
-
-// ==================== 保存后自动上传 ====================
-
-// 连续保存（如批量导入照片）合并成一次上传，避免把带宽和云端版本号刷爆
-let autoPushTimer: ReturnType<typeof setTimeout> | null = null;
-
-function scheduleAutoPush() {
-  if (!isTauri()) return;
-  const settings = getSyncSettings();
-  if (!settings.enabled || !settings.autoPush || !isSyncConfigured(settings)) return;
-
-  if (autoPushTimer) clearTimeout(autoPushTimer);
-  autoPushTimer = setTimeout(() => {
-    autoPushTimer = null;
-    void runAutoPush();
-  }, 5000);
-}
-
-async function runAutoPush() {
-  const state = useFamilyStore.getState();
-  const { project, currentFilePath } = state;
-  if (!project?.meta.syncKey || !currentFilePath) return;
-
-  const settings = getSyncSettings();
-  if (!settings.enabled || !settings.autoPush || !isSyncConfigured(settings)) return;
-
-  try {
-    // 云端更新时不要静默覆盖，交给界面上的提示条让用户决定
-    const remote = await webdavRemoteMeta(
-      settings.server,
-      settings.username,
-      settings.password,
-      remoteDirFor(settings, project.meta.syncKey)
-    );
-    if (remote?.projectUpdatedAt && remote.projectUpdatedAt > (project.meta.updatedAt || '')) {
-      return;
-    }
-    await state.syncPushToCloud();
-  } catch {
-    // 网络异常不应影响本地保存，静默失败
-  }
 }
 
 // ==================== Store 定义 ====================
@@ -381,6 +351,8 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
         // （容忍用户选了上一级目录，或把导出的「某某族谱.json」直接丢进文件夹）
         workspacePath = await resolveWorkspaceDir(path);
       }
+      workspacePath = normalizeNativePath(workspacePath);
+      workspacePath = normalizeNativePath(workspacePath);
 
       // 2. 直接以高速明文读取加载工作区下的 project.json 属性
       const json = await loadProjectJson(workspacePath);
@@ -566,7 +538,6 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
       try {
         await saveProjectJson(currentFilePath, JSON.stringify(updated, null, 2));
         set({ project: updated, isDirty: false });
-        scheduleAutoPush();
       } catch (err) {
         console.error('保存工作区 project.json 失败:', err);
         throw err;

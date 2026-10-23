@@ -14,54 +14,43 @@ import {
 export type { SyncSettings };
 export { DEFAULT_SYNC_SETTINGS, getSyncSettings, saveSyncSettings };
 
-/** 常见免费 WebDAV 服务，用于输入框提示 */
-export const WEBDAV_PRESETS = [
-  {
-    name: '坚果云',
-    server: 'https://dav.jianguoyun.com/dav/',
-    hint: '账号为注册邮箱；密码需在「账户信息 → 安全选项 → 添加应用密码」生成，不是登录密码。',
-  },
-  {
-    name: 'InfiniCLOUD',
-    server: 'https://(你的服务器号).teracloud.jp/dav/',
-    hint: '注册即免费 20GB，无流量限制；服务器号在个人中心首页可见。',
-  },
-  {
-    name: 'Nextcloud / 群晖',
-    server: 'https://your-host/remote.php/dav/files/用户名/',
-    hint: '自建服务请使用 WebDAV 完整地址，路径一般以 remote.php/dav/files/ 开头。',
-  },
-];
-
 /** 是否已经填好足够发起同步的信息 */
 export function isSyncConfigured(s: SyncSettings = getSyncSettings()): boolean {
   return !!s.server.trim() && !!s.username.trim() && !!s.password;
 }
 
-/** 同步目录名：每个家谱一个稳定 ID，改名 / 换电脑都不会错位 */
+/** 同步目录名：组合云端根目录与家谱目录名（如 yiranji/示例家谱） */
 export function remoteDirFor(settings: SyncSettings, syncKey: string): string {
   const root = (settings.remoteRoot || 'yiranji').trim().replace(/^\/+|\/+$/g, '');
-  return `${root}/${syncKey}`;
+  const key = (syncKey || '以苒纪家谱').trim().replace(/^\/+|\/+$/g, '');
+  return `${root}/${key}`;
 }
 
-/** 取家谱的同步 ID，没有则生成（调用方负责写回 meta 并保存） */
+/** 获取家谱在云端的直观文件夹名（以家谱名称为准，清洗文件名非法字符） */
+export function getFamilyCloudFolder(project: FamilyProject): string {
+  const raw = (project.meta.familyName || '').trim() || '以苒纪家谱';
+  return raw.replace(/[\\/:*?"<>|\r\n\t]/g, '_');
+}
+
+/** 取家谱的同步目录标识：直接使用直观家谱名称 */
 export function ensureSyncKey(project: FamilyProject): { key: string; created: boolean } {
-  const existing = project.meta.syncKey;
-  if (existing) return { key: existing, created: false };
-  const key =
-    typeof crypto !== 'undefined' && 'randomUUID' in crypto
-      ? crypto.randomUUID()
-      : `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
-  return { key, created: true };
+  const folderName = getFamilyCloudFolder(project);
+  return { key: folderName, created: project.meta.syncKey !== folderName };
 }
 
-/** 把 ISO 时间格式化成「10-19 14:24」 */
+/** 把 ISO 时间格式化成完整日期时间「YYYY-MM-DD HH:mm:ss」 */
 export function formatSyncTime(iso?: string): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const year = d.getFullYear();
+  const month = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const hours = pad(d.getHours());
+  const minutes = pad(d.getMinutes());
+  const seconds = pad(d.getSeconds());
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
 /** 人类可读的体积 */

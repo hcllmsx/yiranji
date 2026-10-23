@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useFamilyStore } from '../store/familyStore';
 import {
   openDevtools,
@@ -13,9 +12,9 @@ import {
   openInExplorer,
   webdavTest,
   webdavRemoteMeta,
-  webdavListProjects,
+  getWorkspaceStats,
   type RemoteSyncMeta,
-  type RemoteProject,
+  type FolderStats,
 } from '../utils/tauri';
 import {
   getDefaultSaveDir,
@@ -31,12 +30,12 @@ import {
   saveSyncSettings,
   isSyncConfigured,
   remoteDirFor,
+  ensureSyncKey,
   formatSyncTime,
   formatBytes,
-  WEBDAV_PRESETS,
   type SyncSettings,
 } from '../utils/cloudSync';
-import { getSettingsPath, subscribeSettings } from '../utils/appSettings';
+import { subscribeSettings } from '../utils/appSettings';
 import { checkForUpdate } from '../utils/updateChecker';
 import { useUpdateStore } from '../store/updateStore';
 import { createAnonymizedExport, sha256 } from '../utils';
@@ -47,7 +46,6 @@ type SettingsTab = 'basic' | 'storage' | 'advanced';
 let sessionActiveTab: SettingsTab = 'basic';
 
 export default function SettingsPage() {
-  const navigate = useNavigate();
   const {
     project,
     updateMeta,
@@ -58,7 +56,6 @@ export default function SettingsPage() {
     relocateProject,
     syncPushToCloud,
     syncPullFromCloud,
-    restoreProjectFromCloud,
   } = useFamilyStore();
 
   const [activeTab, setActiveTabState] = useState<SettingsTab>(() => sessionActiveTab);
@@ -80,6 +77,13 @@ export default function SettingsPage() {
 
   // 家谱树节点布局（全局偏好）：classic=经典模式，aligned=同辈齐平
   const [treeLayoutMode, setTreeLayoutModeState] = useState<TreeLayoutMode>(() => getTreeLayoutMode());
+  const [workspaceStats, setWorkspaceStats] = useState<FolderStats | null>(null);
+
+  useEffect(() => {
+    if (activeTab === 'storage' && currentFilePath && isTauri()) {
+      getWorkspaceStats(currentFilePath).then(setWorkspaceStats);
+    }
+  }, [activeTab, currentFilePath]);
   const handleTreeLayoutModeChange = (mode: TreeLayoutMode) => {
     setTreeLayoutModeState(mode);
     setTreeLayoutMode(mode);
@@ -93,26 +97,21 @@ export default function SettingsPage() {
     showToast(enabled ? '已开启！返回首页将显示「示例家谱」' : '已关闭首页「示例家谱」入口', 'success');
   };
 
-  // 多设备同步（WebDAV）
+  // 多设备同步
   const [sync, setSync] = useState<SyncSettings>(() => getSyncSettings());
+  const [syncProviderTab, setSyncProviderTab] = useState<'webdav' | 'others'>('webdav');
+  const [testStatus, setTestStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [showSyncPass, setShowSyncPass] = useState(false);
-  const [settingsFilePath, setSettingsFilePath] = useState<string>('');
   const [syncBusy, setSyncBusy] = useState<'' | 'test' | 'push' | 'pull'>('');
+  const [remoteMeta, setRemoteMeta] = useState<RemoteSyncMeta | null>(null);
 
   useEffect(() => {
-    getSettingsPath().then((path) => {
-      if (path) setSettingsFilePath(path);
-    });
     return subscribeSettings(() => {
       setSampleEntryEnabledState(shouldShowSampleEntry(__APP_VERSION__));
       setSync(getSyncSettings());
       setTreeLayoutModeState(getTreeLayoutMode());
     });
   }, []);
-  const [remoteMeta, setRemoteMeta] = useState<RemoteSyncMeta | null>(null);
-  const [remoteProjects, setRemoteProjects] = useState<RemoteProject[] | null>(null);
-  const [loadingRemoteList, setLoadingRemoteList] = useState(false);
-  const [restoringDir, setRestoringDir] = useState('');
 
   // -------------------- Toast --------------------
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -180,14 +179,16 @@ export default function SettingsPage() {
 
   // -------------------- 多设备同步：设置与云端状态 --------------------
   const patchSync = (patch: Partial<SyncSettings>) => {
+    setTestStatus(null);
     setSync(saveSyncSettings(patch));
   };
 
-  const syncKeyOf = project?.meta.syncKey;
+  const syncKeyOf = project ? ensureSyncKey(project).key : '';
 
   const refreshRemoteMeta = async () => {
     if (!isTauri() || !isSyncConfigured(sync) || !syncKeyOf) {
       setRemoteMeta(null);
+      setTestStatus(null);
       return;
     }
     try {
@@ -198,8 +199,10 @@ export default function SettingsPage() {
         remoteDirFor(sync, syncKeyOf)
       );
       setRemoteMeta(meta);
-    } catch {
+      setTestStatus({ ok: true, message: '已连接云端' });
+    } catch (err: any) {
       setRemoteMeta(null);
+      setTestStatus({ ok: false, message: err?.message || '连接失败' });
     }
   };
 
@@ -480,9 +483,8 @@ export default function SettingsPage() {
     }
   };
 
-  // ==================== 多设备同步（WebDAV） ====================
-  const syncKey = project.meta.syncKey;
-  const cloudDir = syncKey ? remoteDirFor(sync, syncKey) : '';
+  // ==================== 多设备同步 ====================
+  const cloudDir = project ? remoteDirFor(sync, ensureSyncKey(project).key) : '';
 
   const handleSyncTest = async () => {
     if (!isTauri()) {
@@ -494,13 +496,17 @@ export default function SettingsPage() {
       return;
     }
     setSyncBusy('test');
+    setTestStatus(null);
     try {
       const root = sync.remoteRoot.replace(/^\/+|\/+$/g, '') || 'yiranji';
-      const path = await webdavTest(sync.server, sync.username, sync.password, root);
-      showToast(`连接成功，云端目录：${path}`, 'success');
+      await webdavTest(sync.server, sync.username, sync.password, root);
+      setTestStatus({ ok: true, message: '已连接' });
+      showToast('连接成功', 'success');
       await refreshRemoteMeta();
     } catch (err: any) {
-      showToast(`连接失败：${err?.message || err}`, 'error');
+      const msg = err?.message || String(err);
+      setTestStatus({ ok: false, message: `连接失败：${msg}` });
+      showToast(`连接失败：${msg}`, 'error');
     } finally {
       setSyncBusy('');
     }
@@ -520,29 +526,42 @@ export default function SettingsPage() {
       return;
     }
 
-    setSyncBusy('push');
-    try {
-      const remoteNewer =
-        !!remoteMeta?.projectUpdatedAt &&
-        remoteMeta.projectUpdatedAt > (project.meta.updatedAt || '');
-      if (remoteNewer && !sync.forceOverwrite) {
+    const remoteNewer =
+      !!remoteMeta?.projectUpdatedAt &&
+      remoteMeta.projectUpdatedAt > (project.meta.updatedAt || '');
+
+    const executePush = async () => {
+      setSyncBusy('push');
+      try {
+        const report = await syncPushToCloud();
         showToast(
-          `云端有更新的版本（${formatSyncTime(remoteMeta!.updatedAt)}，来自 ${remoteMeta!.device}），请先拉取；确需覆盖请勾选「允许覆盖云端」`,
-          'error'
+          `已上传：新增媒体 ${report.uploadedMedia} 个、跳过已存在 ${report.skippedMedia} 个，工程数据 ${formatBytes(report.projectBytes)}`,
+          'success'
         );
-        return;
+        await refreshRemoteMeta();
+      } catch (err: any) {
+        showToast(`上传失败：${err?.message || err}`, 'error');
+      } finally {
+        setSyncBusy('');
       }
-      const report = await syncPushToCloud();
-      showToast(
-        `已上传：新增媒体 ${report.uploadedMedia} 个、跳过已存在 ${report.skippedMedia} 个，工程数据 ${formatBytes(report.projectBytes)}`,
-        'success'
-      );
-      await refreshRemoteMeta();
-    } catch (err: any) {
-      showToast(`上传失败：${err?.message || err}`, 'error');
-    } finally {
-      setSyncBusy('');
+    };
+
+    if (remoteNewer) {
+      setDialog({
+        show: true,
+        title: '云端档案版本较新',
+        message: `云端版本（来自 ${remoteMeta!.device}，修改于 ${formatSyncTime(remoteMeta!.projectUpdatedAt)}）比当前本机档案新。直接上传将覆盖云端数据，是否确定强制覆盖？`,
+        confirmText: '强制覆盖云端',
+        tone: 'danger',
+        onConfirm: async () => {
+          await executePush();
+          return true;
+        },
+      });
+      return;
     }
+
+    await executePush();
   };
 
   const doPull = async () => {
@@ -587,71 +606,6 @@ export default function SettingsPage() {
       tone: 'primary',
       onConfirm: async () => {
         await doPull();
-        return true;
-      },
-    });
-  };
-
-  const refreshRemoteProjects = async () => {
-    if (!isTauri()) {
-      showToast('云同步仅在桌面版可用', 'error');
-      return;
-    }
-    if (!isSyncConfigured(sync)) {
-      showToast('请先填写服务器地址、账号和应用密码', 'error');
-      return;
-    }
-    setLoadingRemoteList(true);
-    try {
-      const list = await webdavListProjects(
-        sync.server,
-        sync.username,
-        sync.password,
-        sync.remoteRoot
-      );
-      setRemoteProjects(list);
-      if (list.length === 0) showToast('云端还没有家谱备份', 'error');
-    } catch (err: any) {
-      showToast(`读取云端家谱失败：${err?.message || err}`, 'error');
-      setRemoteProjects(null);
-    } finally {
-      setLoadingRemoteList(false);
-    }
-  };
-
-  const handleRestore = (item: RemoteProject) => {
-    if (restoringDir) return;
-    const label = item.familyName || '未命名家谱';
-    setDialog({
-      show: true,
-      title: '从云端恢复家谱',
-      message: `将把「${label}」下载到本机一个新文件夹并打开，照片等媒体会一并补齐。接下来请选择保存位置。`,
-      confirmText: '选择保存位置',
-      tone: 'primary',
-      onConfirm: async () => {
-        const parent = await selectProjectParentDir(defaultSaveDir || undefined);
-        if (!parent) return false;
-        setRestoringDir(item.dir);
-        try {
-          const root = (sync.remoteRoot || 'yiranji').replace(/^\/+|\/+$/g, '');
-          const result = await restoreProjectFromCloud(
-            `${root}/${item.dir}`,
-            parent,
-            label
-          );
-          showToast(`已恢复「${label}」，补齐媒体 ${result.media} 个`, 'success');
-          navigate('/tree');
-        } catch (err: any) {
-          const msg = String(err?.message || err);
-          showToast(
-            msg.includes('PASSWORD')
-              ? '档案已下载，但有密码保护，请在首页重新打开并输入密码'
-              : `恢复失败：${msg}`,
-            'error'
-          );
-        } finally {
-          setRestoringDir('');
-        }
         return true;
       },
     });
@@ -858,7 +812,14 @@ export default function SettingsPage() {
             {activeTab === 'storage' && (
               <>
                 <div className="settings-section">
-                  <div className="settings-section-title">档案存储</div>
+                  <div className="settings-section-title settings-section-title--with-badge">
+                    <span>档案存储</span>
+                    {workspaceStats && (
+                      <span className="settings-data-version" title="当前家谱工作区占用的总磁盘空间及文件明细">
+                        当前档案大小：{formatBytes(workspaceStats.totalBytes)}（包含 {workspaceStats.fileCount} 个文件，{workspaceStats.dirCount} 个文件夹）
+                      </span>
+                    )}
+                  </div>
                   <p className="dev-tool-desc" style={{ marginBottom: '16px' }}>
                     家谱以文件夹形式实时保存（内含 project.json 与 media 照片），修改后自动写入，无需手动保存。
                   </p>
@@ -946,15 +907,11 @@ export default function SettingsPage() {
                   >
                     <div>
                       <span>多设备云同步</span>
-                      <p className="dev-tool-desc" style={{ marginTop: '4px', marginBottom: 0, fontWeight: 400 }}>
-                        通过 WebDAV 将档案同步到网盘（坚果云 / InfiniCLOUD / 自建 Nextcloud），两台电脑共用同一份云端备份。
-                        {!isTauri() && (
-                          <>
-                            <br />
-                            <strong>网页版不支持云同步，请安装桌面版使用。</strong>
-                          </>
-                        )}
-                      </p>
+                      {!isTauri() && (
+                        <p className="dev-tool-desc" style={{ marginTop: '4px', marginBottom: 0, fontWeight: 400 }}>
+                          <strong>网页版不支持云同步，请安装桌面版使用。</strong>
+                        </p>
+                      )}
                     </div>
                     <label className="ios-switch" title="开启或关闭多设备云同步">
                       <input
@@ -968,274 +925,211 @@ export default function SettingsPage() {
 
                   {sync.enabled && (
                     <div className="sync-section-body">
-                      <div className="sync-preset-row">
-                        <span className="sync-preset-label">快速填入：</span>
-                        {WEBDAV_PRESETS.map((preset) => (
-                          <button
-                            key={preset.name}
-                            type="button"
-                            className="sync-preset-btn"
-                            title={preset.hint}
-                            onClick={() => patchSync({ server: preset.server })}
-                          >
-                            {preset.name}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="form-group">
-                        <label className="form-label" htmlFor="syncServer">服务地址</label>
-                        <input
-                          id="syncServer"
-                          type="text"
-                          className="form-input"
-                          value={sync.server}
-                          autoComplete="off"
-                          spellCheck={false}
-                          placeholder="https://dav.jianguoyun.com/dav/"
-                          onChange={(e) => patchSync({ server: e.target.value })}
-                        />
-                      </div>
-
-                      <div className="sync-two-col">
-                        <div className="form-group">
-                          <label className="form-label" htmlFor="syncUser">账号</label>
-                          <input
-                            id="syncUser"
-                            type="text"
-                            className="form-input"
-                            value={sync.username}
-                            autoComplete="off"
-                            spellCheck={false}
-                            placeholder="登录邮箱 / 用户名"
-                            onChange={(e) => patchSync({ username: e.target.value })}
-                          />
-                        </div>
-                        <div className="form-group">
-                          <label className="form-label" htmlFor="syncPass">应用密码</label>
-                          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                            <input
-                              id="syncPass"
-                              type={showSyncPass ? 'text' : 'password'}
-                              className="form-input"
-                              value={sync.password}
-                              autoComplete="new-password"
-                              spellCheck={false}
-                              placeholder="WebDAV 应用密码"
-                              style={{ paddingRight: '38px' }}
-                              onChange={(e) => patchSync({ password: e.target.value })}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowSyncPass(!showSyncPass)}
-                              style={{
-                                position: 'absolute',
-                                right: '6px',
-                                background: 'none',
-                                border: 'none',
-                                cursor: 'pointer',
-                                color: 'var(--color-text-secondary, #666)',
-                                padding: '4px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                              }}
-                              title={showSyncPass ? '隐藏密码' : '显示密码'}
-                            >
-                              {showSyncPass ? (
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                                  <line x1="1" y1="1" x2="23" y2="23"></line>
-                                </svg>
-                              ) : (
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                                  <circle cx="12" cy="12" r="3"></circle>
-                                </svg>
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="sync-two-col">
-                        <div className="form-group">
-                          <label className="form-label" htmlFor="syncRoot">云端根目录</label>
-                          <input
-                            id="syncRoot"
-                            type="text"
-                            className="form-input"
-                            value={sync.remoteRoot}
-                            autoComplete="off"
-                            spellCheck={false}
-                            placeholder="yiranji"
-                            onChange={(e) => patchSync({ remoteRoot: e.target.value })}
-                          />
-                        </div>
-                        <div className="form-group">
-                          <label className="form-label">本家谱的云端位置</label>
-                          <div className="path-display" title={cloudDir}>
-                            {cloudDir || '首次上传时自动生成'}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="sync-status-card">
-                        <div className="sync-status-line">
-                          <span className="sync-status-key">云端版本</span>
-                          <span className="sync-status-value">
-                            {remoteMeta
-                              ? `${formatSyncTime(remoteMeta.updatedAt)} · 来自 ${remoteMeta.device} · 第 ${remoteMeta.revision} 版`
-                              : isSyncConfigured(sync)
-                                ? '尚未上传过'
-                                : '未配置'}
-                          </span>
-                        </div>
-                        <div className="sync-status-line">
-                          <span className="sync-status-key">本机档案</span>
-                          <span className="sync-status-value">{formatSyncTime(project.meta.updatedAt)}</span>
-                        </div>
-                        {remoteMeta && remoteMeta.projectUpdatedAt > (project.meta.updatedAt || '') && (
-                          <div className="sync-status-warn">⚠️ 云端比本机新，建议先「从云端拉取」再继续编辑</div>
-                        )}
-                      </div>
-
-                      <div className="sync-actions">
+                      {/* 书签切换栏 */}
+                      <div className="sync-provider-tabs">
                         <button
                           type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={handleSyncTest}
-                          disabled={!!syncBusy || !isTauri()}
+                          className={`sync-provider-tab ${syncProviderTab === 'webdav' ? 'active' : ''}`}
+                          onClick={() => setSyncProviderTab('webdav')}
                         >
-                          {syncBusy === 'test' ? '⏳ 连接中…' : '🔌 测试连接'}
+                          WebDAV
                         </button>
                         <button
                           type="button"
-                          className="btn btn-primary btn-sm"
-                          onClick={handleSyncPush}
-                          disabled={!!syncBusy || !isTauri()}
+                          className={`sync-provider-tab ${syncProviderTab === 'others' ? 'active' : ''}`}
+                          onClick={() => setSyncProviderTab('others')}
                         >
-                          {syncBusy === 'push' ? '⏳ 上传中…' : '⬆️ 上传到云端'}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={handleSyncPull}
-                          disabled={!!syncBusy || !isTauri()}
-                        >
-                          {syncBusy === 'pull' ? '⏳ 拉取中…' : '⬇️ 从云端拉取'}
+                          其他方式
                         </button>
                       </div>
 
-                      <div className="sync-options">
-                        <label className="sync-check">
-                          <input
-                            type="checkbox"
-                            checked={sync.autoCheck}
-                            onChange={(e) => patchSync({ autoCheck: e.target.checked })}
-                          />
-                          <span>进入家谱时检查云端更新</span>
-                        </label>
-                        <label className="sync-check">
-                          <input
-                            type="checkbox"
-                            checked={sync.autoPush}
-                            onChange={(e) => patchSync({ autoPush: e.target.checked })}
-                          />
-                          <span>保存后自动上传（约 5 秒后）</span>
-                        </label>
-                        <label className="sync-check">
-                          <input
-                            type="checkbox"
-                            checked={sync.forceOverwrite}
-                            onChange={(e) => patchSync({ forceOverwrite: e.target.checked })}
-                          />
-                          <span>允许本机覆盖云端的较新版本</span>
-                        </label>
-                      </div>
-
-                      <p className="form-hint" style={{ marginTop: '10px' }}>
-                        账号密码只保存在本机。坚果云要用「账户信息 → 安全选项 → 应用密码」生成的那串密码，不是登录密码。
-                        两台电脑都开启同步后，可在本页手动上传或拉取档案，也可按设置自动检查云端更新。
-                      </p>
-
-                      {settingsFilePath && (
-                        <div style={{
-                          marginTop: '12px',
-                          padding: '10px 14px',
-                          background: 'var(--color-bg-secondary, rgba(0,0,0,0.03))',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          color: 'var(--color-text-secondary)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '12px',
-                          border: '1px solid var(--color-border-light, #e5e7eb)'
-                        }}>
-                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            <span>软件配置已安全保存在本机：</span>
-                            <code style={{ fontSize: '11px', background: 'rgba(0,0,0,0.05)', padding: '2px 5px', borderRadius: '4px' }}>{settingsFilePath}</code>
-                            <span style={{ marginLeft: '8px', color: 'var(--color-text-tertiary)' }}>（WebDAV 密码经本地硬件特征派生 AES-256-GCM 强加密保护）</span>
-                          </div>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            style={{ flexShrink: 0, padding: '3px 10px', fontSize: '12px' }}
-                            onClick={() => openInExplorer(settingsFilePath)}
-                            title="在资源管理器中打开配置所在文件夹"
-                          >
-                            打开配置目录
-                          </button>
+                      {syncProviderTab === 'others' ? (
+                        <div className="sync-others-placeholder">
+                          <span>正在规划中...</span>
                         </div>
-                      )}
-
-                      <div className="sync-restore">
-                        <div className="sync-restore-head">
-                          <div>
-                            <strong>换电脑 / 找回云端档案</strong>
-                            <span>新电脑上直接读取云端已有家谱，无需手工拷贝文件</span>
+                      ) : (
+                        <>
+                          {/* 1. 服务地址 (75%) + 云端根目录 (25%) */}
+                          <div className="sync-server-root-row">
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label className="form-label" htmlFor="syncServer">服务地址</label>
+                              <input
+                                id="syncServer"
+                                type="text"
+                                className="form-input"
+                                value={sync.server}
+                                autoComplete="off"
+                                spellCheck={false}
+                                placeholder="https://dav.jianguoyun.com/dav/"
+                                onChange={(e) => patchSync({ server: e.target.value })}
+                              />
+                            </div>
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label className="form-label" htmlFor="syncRoot">云端根目录</label>
+                              <input
+                                id="syncRoot"
+                                type="text"
+                                className="form-input"
+                                value={sync.remoteRoot}
+                                autoComplete="off"
+                                spellCheck={false}
+                                placeholder="yiranji"
+                                onChange={(e) => patchSync({ remoteRoot: e.target.value })}
+                              />
+                            </div>
                           </div>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            onClick={refreshRemoteProjects}
-                            disabled={loadingRemoteList || !isTauri()}
-                          >
-                            {loadingRemoteList ? '⏳ 读取中…' : '🔍 读取云端家谱'}
-                          </button>
-                        </div>
 
-                        {remoteProjects && remoteProjects.length === 0 && (
-                          <p className="form-hint" style={{ margin: '10px 0 0' }}>
-                            云端根目录下还没有家谱备份。
-                          </p>
-                        )}
+                          {/* 2. 本家谱的云端位置（单行居中框） */}
+                          <div className="sync-cloud-location-box">
+                            本家谱的云端位置：<strong>{cloudDir || '填写服务地址后自动关联'}</strong>
+                          </div>
 
-                        {remoteProjects && remoteProjects.length > 0 && (
-                          <ul className="sync-restore-list">
-                            {remoteProjects.map((item) => (
-                              <li key={item.dir} className="sync-restore-item">
-                                <div className="sync-restore-info">
-                                  <strong>{item.familyName || '未命名家谱'}</strong>
-                                  <span>
-                                    {formatSyncTime(item.updatedAt)} · 来自 {item.device || '未知设备'} ·
-                                    第 {item.revision} 版 · {item.mediaCount} 个媒体
-                                  </span>
-                                </div>
+                          {/* 3. 账号 (50%) + 应用密码 (50%) */}
+                          <div className="sync-account-row">
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label className="form-label" htmlFor="syncUser">账号</label>
+                              <input
+                                id="syncUser"
+                                type="text"
+                                className="form-input"
+                                value={sync.username}
+                                autoComplete="off"
+                                spellCheck={false}
+                                placeholder="登录邮箱 / 用户名"
+                                onChange={(e) => patchSync({ username: e.target.value })}
+                              />
+                            </div>
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label className="form-label" htmlFor="syncPass">应用密码</label>
+                              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                <input
+                                  id="syncPass"
+                                  type={showSyncPass ? 'text' : 'password'}
+                                  className="form-input"
+                                  value={sync.password}
+                                  autoComplete="new-password"
+                                  spellCheck={false}
+                                  placeholder="WebDAV 应用密码"
+                                  style={{ paddingRight: '38px' }}
+                                  onChange={(e) => patchSync({ password: e.target.value })}
+                                />
                                 <button
                                   type="button"
-                                  className="btn btn-secondary btn-sm"
-                                  onClick={() => handleRestore(item)}
-                                  disabled={!!restoringDir}
+                                  onClick={() => setShowSyncPass(!showSyncPass)}
+                                  style={{
+                                    position: 'absolute',
+                                    right: '6px',
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    color: 'var(--color-text-secondary, #666)',
+                                    padding: '4px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}
+                                  title={showSyncPass ? '隐藏密码' : '显示密码'}
                                 >
-                                  {restoringDir === item.dir ? '⏳ 恢复中…' : '恢复到本机'}
+                                  {showSyncPass ? (
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                                      <line x1="1" y1="1" x2="23" y2="23"></line>
+                                    </svg>
+                                  ) : (
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                      <circle cx="12" cy="12" r="3"></circle>
+                                    </svg>
+                                  )}
                                 </button>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 4. 版本状态卡片（右侧贴合渐变色块） */}
+                          <div className="sync-status-card">
+                            <div className="sync-status-info">
+                              <div className="sync-status-line">
+                                <span className="sync-status-key">云端版本</span>
+                                <span className="sync-status-value">
+                                  {remoteMeta
+                                    ? `${formatSyncTime(remoteMeta.projectUpdatedAt)} · 来自 ${remoteMeta.device} · 第 ${remoteMeta.revision} 版`
+                                    : isSyncConfigured(sync)
+                                      ? '尚未上传过'
+                                      : '未配置'}
+                                </span>
+                              </div>
+                              <div className="sync-status-line">
+                                <span className="sync-status-key">本机档案</span>
+                                <span className="sync-status-value">{formatSyncTime(project.meta.updatedAt)}</span>
+                              </div>
+                              {remoteMeta && remoteMeta.projectUpdatedAt > (project.meta.updatedAt || '') && (
+                                <div className="sync-status-warn">云端比本机新，建议先「从云端拉取」再继续编辑</div>
+                              )}
+                            </div>
+
+                            <div
+                              className={`sync-status-gradient-badge ${testStatus ? (testStatus.ok ? 'connected' : 'error') : 'untested'}`}
+                              title={testStatus?.message}
+                            >
+                              <span>
+                                {testStatus
+                                  ? (testStatus.ok ? '已连接云端' : '连接失败')
+                                  : (isSyncConfigured(sync) ? '未连接' : '未配置')}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* 5. 操作按钮组 */}
+                          <div className="sync-actions-row">
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={handleSyncTest}
+                              disabled={!!syncBusy || !isTauri()}
+                            >
+                              {syncBusy === 'test' && <span className="btn-spinner" />}
+                              {syncBusy === 'test' ? '连接中…' : '测试连接'}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={handleSyncPush}
+                              disabled={!!syncBusy || !isTauri()}
+                            >
+                              {syncBusy === 'push' && <span className="btn-spinner" />}
+                              {syncBusy === 'push' ? '上传中…' : '上传到云端'}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={handleSyncPull}
+                              disabled={!!syncBusy || !isTauri()}
+                            >
+                              {syncBusy === 'pull' && <span className="btn-spinner" />}
+                              {syncBusy === 'pull' ? '拉取中…' : '从云端拉取'}
+                            </button>
+                          </div>
+
+                          {/* 6. 高级同步偏好 */}
+                          <div className="sync-switch-options">
+                            <div className="sync-switch-row">
+                              <div>
+                                <div className="sync-switch-title">进入家谱时检查云端更新</div>
+                                <div className="sync-switch-desc">打开档案时若发现云端版本较新，将提示拉取</div>
+                              </div>
+                              <label className="ios-switch">
+                                <input
+                                  type="checkbox"
+                                  checked={sync.autoCheck}
+                                  onChange={(e) => patchSync({ autoCheck: e.target.checked })}
+                                />
+                                <span className="ios-slider" />
+                              </label>
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>

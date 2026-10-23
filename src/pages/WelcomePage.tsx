@@ -9,7 +9,10 @@ import {
   createProjectWorkspace,
   openUrl,
   installSampleWorkspace,
+  webdavListProjects,
+  type RemoteProject,
 } from '../utils/tauri';
+import { getSyncSettings, saveSyncSettings, isSyncConfigured, formatSyncTime } from '../utils/cloudSync';
 import { getDefaultSaveDir, shouldShowSampleEntry, dismissSampleEntry } from '../utils/appPrefs';
 import { subscribeSettings } from '../utils/appSettings';
 import './WelcomePage.css';
@@ -24,7 +27,17 @@ export default function WelcomePage() {
     loadRecentProjects,
     removeRecentProject,
     importProjectFromJSON,
+    restoreProjectFromCloud,
   } = useFamilyStore();
+
+  // 云端拉取模态框
+  const [showCloudModal, setShowCloudModal] = useState(false);
+  const [cloudLoading, setCloudLoading] = useState(false);
+  const [cloudError, setCloudError] = useState('');
+  const [cloudProjects, setCloudProjects] = useState<RemoteProject[]>([]);
+  const [restoringDir, setRestoringDir] = useState('');
+  const [showCloudConfig, setShowCloudConfig] = useState(false);
+  const [cloudSyncConfig, setCloudSyncConfig] = useState(() => getSyncSettings());
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [surname, setSurname] = useState('');
@@ -226,6 +239,73 @@ export default function WelcomePage() {
     }
   };
 
+  const loadCloudList = async (sync = getSyncSettings()) => {
+    setCloudLoading(true);
+    setCloudError('');
+    try {
+      const list = await webdavListProjects(
+        sync.server,
+        sync.username,
+        sync.password,
+        sync.remoteRoot || 'yiranji'
+      );
+      setCloudProjects(list);
+    } catch (err: any) {
+      setCloudError(err?.message || String(err));
+    } finally {
+      setCloudLoading(false);
+    }
+  };
+
+  // 从云端获取家谱（若未配置账号直接在弹窗内提供配置，无需进入内部设置）
+  const handleOpenCloud = async () => {
+    const sync = getSyncSettings();
+    setCloudSyncConfig(sync);
+    setShowCloudModal(true);
+    if (!isSyncConfigured(sync)) {
+      setShowCloudConfig(true);
+      return;
+    }
+    setShowCloudConfig(false);
+    await loadCloudList(sync);
+  };
+
+  const handleSaveCloudConfig = async () => {
+    if (!cloudSyncConfig.server.trim() || !cloudSyncConfig.username.trim() || !cloudSyncConfig.password) {
+      setCloudError('请完整填写服务地址、账号和应用密码');
+      return;
+    }
+    const updated = saveSyncSettings({
+      ...cloudSyncConfig,
+      enabled: true,
+    });
+    setCloudSyncConfig(updated);
+    setShowCloudConfig(false);
+    await loadCloudList(updated);
+  };
+
+  // 恢复家谱：联动“默认保存位置”，若已设置则直接使用，无需每次手动选择
+  const handleRestoreProject = async (rp: RemoteProject) => {
+    try {
+      const defaultDir = getDefaultSaveDir();
+      let parentDir: string = defaultDir || '';
+      if (!parentDir) {
+        const selected = await selectProjectParentDir();
+        if (!selected) return;
+        parentDir = selected;
+      }
+      setRestoringDir(rp.dir);
+      const res = await restoreProjectFromCloud(rp.dir, parentDir, rp.familyName || rp.dir);
+      setShowCloudModal(false);
+      showCustomAlert(`成功从云端恢复家谱“${rp.familyName || rp.dir}”（包含 ${res.media} 个媒体文件）`);
+      navigate('/tree');
+    } catch (err: any) {
+      showCustomAlert(`从云端恢复家谱失败: ${err?.message || err}`);
+    } finally {
+      setRestoringDir('');
+    }
+  };
+
   // 打开随软件发布的示例家谱
   const handleOpenSample = async () => {
     try {
@@ -378,6 +458,14 @@ export default function WelcomePage() {
               >
                 <span>📜</span>
                 <span>打开文件</span>
+              </button>
+              <button
+                className="welcome-btn-open"
+                onClick={handleOpenCloud}
+                style={{ width: '220px', display: 'inline-flex', justifyContent: 'center' }}
+              >
+                <span>☁️</span>
+                <span>从云端获取</span>
               </button>
               {showSampleButton && (
                 <button
@@ -721,6 +809,158 @@ export default function WelcomePage() {
               }}>
                 确认创建
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 从云端获取 / 恢复家谱模态框 */}
+      {showCloudModal && (
+        <div className="modal-overlay" onClick={() => !restoringDir && setShowCloudModal(false)}>
+          <div
+            className="modal animate-scale-in"
+            style={{ maxWidth: '520px', width: '90%' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3>从云端获取家谱</h3>
+              {!showCloudConfig && (
+                <button
+                  type="button"
+                  style={{ background: 'none', border: 'none', color: 'var(--color-accent)', cursor: 'pointer', fontSize: '12.5px' }}
+                  onClick={() => { setShowCloudConfig(true); setCloudError(''); }}
+                >
+                  ⚙️ WebDAV 设置
+                </button>
+              )}
+            </div>
+            <div className="modal-body" style={{ maxHeight: '420px', overflowY: 'auto' }}>
+              {showCloudConfig ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', margin: 0 }}>
+                    填写 WebDAV 云盘服务地址与应用密码，换电脑也能轻松拉取：
+                  </p>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">服务地址</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="https://dav.jianguoyun.com/dav/"
+                      value={cloudSyncConfig.server}
+                      onChange={(e) => setCloudSyncConfig({ ...cloudSyncConfig, server: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">云端根目录</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="yiranji"
+                      value={cloudSyncConfig.remoteRoot}
+                      onChange={(e) => setCloudSyncConfig({ ...cloudSyncConfig, remoteRoot: e.target.value })}
+                    />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">账号</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="登录邮箱/用户名"
+                        value={cloudSyncConfig.username}
+                        onChange={(e) => setCloudSyncConfig({ ...cloudSyncConfig, username: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">应用密码</label>
+                      <input
+                        type="password"
+                        className="form-input"
+                        placeholder="应用专用密码"
+                        value={cloudSyncConfig.password}
+                        onChange={(e) => setCloudSyncConfig({ ...cloudSyncConfig, password: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  {cloudError && (
+                    <div style={{ color: 'var(--color-danger)', fontSize: '12px', marginTop: '4px' }}>
+                      {cloudError}
+                    </div>
+                  )}
+                </div>
+              ) : cloudLoading ? (
+                <div style={{ textAlign: 'center', padding: '36px 0', color: 'var(--color-text-secondary)' }}>
+                  <span className="btn-spinner" style={{ width: '18px', height: '18px', marginRight: '8px' }} />
+                  正在连接云端读取家谱列表…
+                </div>
+              ) : cloudError ? (
+                <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--color-danger)' }}>
+                  <p style={{ marginBottom: '12px' }}>读取云端家谱失败：{cloudError}</p>
+                  <button className="btn btn-secondary btn-sm" onClick={() => loadCloudList()}>
+                    重试
+                  </button>
+                </div>
+              ) : cloudProjects.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '36px 0', color: 'var(--color-text-tertiary)' }}>
+                  云端尚未备份过任何家谱
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {cloudProjects.map((rp) => (
+                    <div
+                      key={rp.dir}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '12px 14px',
+                        border: '1px solid var(--color-border-light)',
+                        borderRadius: 'var(--radius-md)',
+                        backgroundColor: 'var(--color-bg-secondary)',
+                      }}
+                    >
+                      <div style={{ minWidth: 0, flex: 1, marginRight: '12px' }}>
+                        <div style={{ fontSize: '14.5px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                          {rp.familyName || rp.dir}
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--color-text-tertiary)', marginTop: '4px' }}>
+                          云端版本：{formatSyncTime(rp.projectUpdatedAt || rp.updatedAt)} · 来自 {rp.device || '未知设备'}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={!!restoringDir}
+                        onClick={() => handleRestoreProject(rp)}
+                      >
+                        {restoringDir === rp.dir ? '正在拉取…' : '拉取到本机'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              {showCloudConfig ? (
+                <>
+                  {isSyncConfigured(getSyncSettings()) && (
+                    <button className="btn btn-secondary" onClick={() => setShowCloudConfig(false)}>
+                      取消返回
+                    </button>
+                  )}
+                  <button className="btn btn-primary" onClick={handleSaveCloudConfig}>
+                    保存并连接云端
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="btn btn-secondary"
+                  disabled={!!restoringDir}
+                  onClick={() => setShowCloudModal(false)}
+                >
+                  关闭
+                </button>
+              )}
             </div>
           </div>
         </div>
