@@ -564,7 +564,20 @@ function TreePageContent() {
     edgesRef.current = edges;
   }, [edges]);
 
-  const hasCustomLayout = !!(project?.customLayout && Object.keys(project.customLayout).length > 0);
+  // 节点布局模式：classic = 经典模式（主脉居中、长幼错落）；aligned = 同辈齐平（同高拉齐、从左到右）
+  const [treeLayoutMode, setTreeLayoutModeState] = useState<TreeLayoutMode>(() => getTreeLayoutMode());
+  // 模式切换标识（防止模式切换时把前一个模式的屏幕实时位置覆盖到新模式）
+  const isModeSwitchRef = useRef(false);
+
+  // 按模式隔离记忆自定义位置：经典模式与同辈平齐模式互不干扰
+  const currentModeCustomLayout = useMemo(() => {
+    if (treeLayoutMode === 'aligned') {
+      return project?.customLayoutAligned;
+    }
+    return project?.customLayoutClassic || (!project?.customLayoutAligned ? project?.customLayout : undefined);
+  }, [project?.customLayoutAligned, project?.customLayoutClassic, project?.customLayout, treeLayoutMode]);
+
+  const hasCustomLayout = !!(currentModeCustomLayout && Object.keys(currentModeCustomLayout).length > 0);
   // 本次运行内是否已自动定位过主视角（仅用于挂载初期的视口，避免恢复位置时闪一下默认视角）
   const isSessionFirstEntry = !autoFocusedProjectIds.has(currentProjectId || 'default');
 
@@ -578,11 +591,11 @@ function TreePageContent() {
         y: Math.round(node.position.y),
       };
     });
-    saveCustomLayout(layout);
+    saveCustomLayout(layout, treeLayoutMode);
     // 用户手动拖拽节点后，自动切回"自定义位置"视图模式
     useDefaultLayoutRef.current = false;
     setIsDefaultLayoutView(false);
-  }, [saveCustomLayout, getNodes]);
+  }, [saveCustomLayout, getNodes, treeLayoutMode]);
 
   const [showCoordinates, setShowCoordinates] = useState(false);
   // 主视角切换面板
@@ -613,17 +626,29 @@ function TreePageContent() {
   // 家谱树亲子连线的显示模式（在"设置 → 家谱树显示"中切换）：
   // classic = 原版连线（每条亲子连线各画完整 smoothstep）；enhanced = 增强模式
   // （生父/生母称呼贴家长卡片、父母双方横杠只画一次）。默认 classic，保持与原版一致。
-  // 节点布局模式：classic = 经典模式（主脉居中、长幼错落）；aligned = 同辈齐平（同高拉齐、从左到右）
-  const [treeLayoutMode, setTreeLayoutModeState] = useState<TreeLayoutMode>(() => getTreeLayoutMode());
   useEffect(() => {
     const onLayoutModeChange = () => {
-      setTreeLayoutModeState(getTreeLayoutMode());
-      useDefaultLayoutRef.current = true;
-      setIsDefaultLayoutView(true);
+      const nextMode = getTreeLayoutMode();
+      isModeSwitchRef.current = true;
+      setTreeLayoutModeState(nextMode);
+      const targetLayout =
+        nextMode === 'aligned'
+          ? project?.customLayoutAligned
+          : (project?.customLayoutClassic || (!project?.customLayoutAligned ? project?.customLayout : undefined));
+      const targetHas = !!(targetLayout && Object.keys(targetLayout).length > 0);
+      if (targetHas) {
+        useDefaultLayoutRef.current = false;
+        applySavedCustomLayoutRef.current = true;
+        setIsDefaultLayoutView(false);
+      } else {
+        useDefaultLayoutRef.current = true;
+        applySavedCustomLayoutRef.current = false;
+        setIsDefaultLayoutView(true);
+      }
     };
     window.addEventListener(TREE_LAYOUT_MODE_EVENT, onLayoutModeChange);
     return () => window.removeEventListener(TREE_LAYOUT_MODE_EVENT, onLayoutModeChange);
-  }, []);
+  }, [project]);
 
   useEffect(() => {
     showCoordinatesRef.current = showCoordinates;
@@ -1432,7 +1457,7 @@ function TreePageContent() {
       useDefaultLayoutRef.current = false;
       setIsDefaultLayoutView(false);
     },
-    [getNodes, setNodes, saveCustomLayout]
+    [getNodes, setNodes, saveCustomLayout, treeLayoutMode]
   );
 
   // 从人员数据构建节点和边
@@ -2198,52 +2223,55 @@ function TreePageContent() {
       });
     }
 
-    // ====== Bug 2 & 3 修复：保持已有节点位置，仅对新增节点使用算法布局 ======
-    // 当不是用户明确点击"默认布局"按钮时，尝试保持已有节点的当前位置
+    // ====== 模式隔离的位置恢复逻辑 ======
     if (!useDefaultLayoutRef.current) {
-      const currentCustomLayout = useFamilyStore.getState().project?.customLayout;
+      const targetCustomLayout = currentModeCustomLayout;
       const shouldApplySavedCustomLayout = applySavedCustomLayoutRef.current;
       applySavedCustomLayoutRef.current = false;
 
-      // 点击“自定义位置”时，从已保存快照恢复；其他重建保留画布实时位置。
-      if (shouldApplySavedCustomLayout && currentCustomLayout) {
-        layouted.forEach((n) => {
-          const pos = currentCustomLayout[n.id];
-          if (pos) n.position = { x: pos.x, y: pos.y };
-        });
-      } else {
-        // 优先从 ReactFlow 当前实时节点读取位置
-        const currentNodes = getNodes();
-        const currentPosMap = new Map<string, { x: number; y: number }>();
-        currentNodes.forEach(n => {
-          currentPosMap.set(n.id, { x: n.position.x, y: n.position.y });
-        });
-
-        // 如果当前有实时节点（非首次构建），用实时位置覆盖已有节点
-        if (currentNodes.length > 0) {
+      // 若刚刚触发了布局模式切换（经典模式 <-> 同辈平齐模式）：
+      if (isModeSwitchRef.current) {
+        if (targetCustomLayout && shouldApplySavedCustomLayout) {
           layouted.forEach((n) => {
-            const existingPos = currentPosMap.get(n.id);
-            if (existingPos) {
-              // 已有节点保持当前位置不变
-              n.position = { x: existingPos.x, y: existingPos.y };
-            }
-            // 新增节点使用算法计算的位置（已在上方计算好）
-          });
-        } else if (currentCustomLayout) {
-          // 首次构建，尝试从 customLayout 恢复
-          layouted.forEach((n) => {
-            const pos = currentCustomLayout[n.id];
+            const pos = targetCustomLayout[n.id];
             if (pos) n.position = { x: pos.x, y: pos.y };
           });
         }
+        // 若目标模式没有自定义位置，直接保留算法排布（同辈平齐或经典错落），绝不取旧模式的屏幕坐标！
+      } else {
+        // 模式未改变时的常规更新：
+        if (shouldApplySavedCustomLayout && targetCustomLayout) {
+          layouted.forEach((n) => {
+            const pos = targetCustomLayout[n.id];
+            if (pos) n.position = { x: pos.x, y: pos.y };
+          });
+        } else {
+          // 保持已有节点位置，仅对新增节点使用算法布局
+          const currentNodes = getNodes();
+          const currentPosMap = new Map<string, { x: number; y: number }>();
+          currentNodes.forEach(n => {
+            currentPosMap.set(n.id, { x: n.position.x, y: n.position.y });
+          });
+
+          if (currentNodes.length > 0) {
+            layouted.forEach((n) => {
+              const existingPos = currentPosMap.get(n.id);
+              if (existingPos) {
+                n.position = { x: existingPos.x, y: existingPos.y };
+              }
+            });
+          } else if (targetCustomLayout) {
+            layouted.forEach((n) => {
+              const pos = targetCustomLayout[n.id];
+              if (pos) n.position = { x: pos.x, y: pos.y };
+            });
+          }
+        }
       }
 
-      // 主树坐标（customLayout / 画布实时位置）到这里才最终确定。
-      // 旧版快照没有记录侧栏卡坐标，历史值可能把卡片钉在主树内部，
-      // 这种情况按最终包围盒重新摆位；用户拖动 / 手动输入过坐标后的快照带标记，
-      // 侧栏卡坐标属于用户意图，原样保留。
       if (!project?.sideCardsPinned) placeSideCards();
     }
+    isModeSwitchRef.current = false;
 
     // 所有节点坐标（含侧栏卡换边、自定义位置）到这里才最终确定，
     // 再根据配偶双方的物理 X 轴分配连接点 Handles，保证配偶连线始终走最近的一侧。
@@ -2695,10 +2723,25 @@ function TreePageContent() {
             className="btn btn-sm btn-secondary"
             onClick={() => {
               const nextMode = treeLayoutMode === 'classic' ? 'aligned' : 'classic';
+              isModeSwitchRef.current = true;
               setTreeLayoutMode(nextMode);
               setTreeLayoutModeState(nextMode);
-              useDefaultLayoutRef.current = true;
-              setIsDefaultLayoutView(true);
+
+              const targetLayout =
+                nextMode === 'aligned'
+                  ? project?.customLayoutAligned
+                  : (project?.customLayoutClassic || (!project?.customLayoutAligned ? project?.customLayout : undefined));
+              const targetHas = !!(targetLayout && Object.keys(targetLayout).length > 0);
+
+              if (targetHas) {
+                useDefaultLayoutRef.current = false;
+                applySavedCustomLayoutRef.current = true;
+                setIsDefaultLayoutView(false);
+              } else {
+                useDefaultLayoutRef.current = true;
+                applySavedCustomLayoutRef.current = false;
+                setIsDefaultLayoutView(true);
+              }
             }}
             title={`当前节点布局：${treeLayoutMode === 'classic' ? '经典模式（主脉居中、长幼错落）' : '同辈齐平（同高拉齐、从左到右）'}，点击切换`}
           >

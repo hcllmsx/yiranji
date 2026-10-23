@@ -15,6 +15,7 @@ import {
   removePersonFromAdoptiveGroups,
 } from '../types';
 import { sha256, generateAnonymizedNames } from '../utils';
+import type { TreeLayoutMode } from '../utils/appPrefs';
 import {
   isTauri,
   selectFilePathForSave,
@@ -171,8 +172,8 @@ interface FamilyStore {
     skipPasswordCheck?: boolean
   ) => Promise<boolean>;
   importProjectFromJSON: (project: FamilyProject) => Promise<string>;
-  saveCustomLayout: (layout: Record<string, { x: number; y: number }>) => void;
-  clearCustomLayout: () => void;
+  saveCustomLayout: (layout: Record<string, { x: number; y: number }>, mode?: TreeLayoutMode) => void;
+  clearCustomLayout: (mode?: TreeLayoutMode) => void;
   closeProject: () => void;
   saveCurrentProject: () => Promise<void>;
   saveProjectAs: () => Promise<boolean>;
@@ -493,12 +494,14 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     return projectId;
   },
 
-  saveCustomLayout: (layout: Record<string, { x: number; y: number }>) => {
+  saveCustomLayout: (layout: Record<string, { x: number; y: number }>, mode?: TreeLayoutMode) => {
     const { project } = get();
     if (!project) return;
-    const updated = {
+    const isAligned = mode === 'aligned';
+    const updated: FamilyProject = {
       ...project,
       customLayout: layout,
+      ...(isAligned ? { customLayoutAligned: layout } : { customLayoutClassic: layout }),
       // 快照由用户当前的完整布局生成（含侧栏卡坐标），恢复时原样应用
       sideCardsPinned: true,
     };
@@ -506,11 +509,26 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     autoSave(get);
   },
 
-  clearCustomLayout: () => {
+  clearCustomLayout: (mode?: TreeLayoutMode) => {
     const { project } = get();
     if (!project) return;
-    const { customLayout, sideCardsPinned, ...rest } = project;
-    set({ project: rest as FamilyProject, isDirty: true });
+    const updated = { ...project };
+    if (mode === 'aligned') {
+      delete updated.customLayoutAligned;
+    } else if (mode === 'classic') {
+      delete updated.customLayoutClassic;
+    } else {
+      delete updated.customLayoutClassic;
+      delete updated.customLayoutAligned;
+    }
+
+    if (!updated.customLayoutClassic && !updated.customLayoutAligned) {
+      delete updated.customLayout;
+      delete updated.sideCardsPinned;
+    } else {
+      updated.customLayout = mode === 'aligned' ? updated.customLayoutClassic : updated.customLayoutAligned;
+    }
+    set({ project: updated as FamilyProject, isDirty: true });
     autoSave(get);
   },
 

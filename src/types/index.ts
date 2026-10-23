@@ -61,6 +61,9 @@ export interface VideoFile {
 /** 配偶关系类型 */
 export type SpouseRelationType = 'married' | 'divorced' | 'deceased';
 
+/** 配偶婚次类型 */
+export type SpouseOrderType = 'first' | 'second' | 'third' | 'other';
+
 /** 子女关系类型 */
 export type ChildRelationType = 'biological' | 'adopted' | 'step';
 
@@ -68,6 +71,7 @@ export type ChildRelationType = 'biological' | 'adopted' | 'step';
 export interface SpouseRelation {
   id: string;             // 对方的 person id
   type: SpouseRelationType;
+  orderType?: SpouseOrderType; // 婚次：first(原配) | second(二婚) | third(三婚) | other(配偶/未指定)
   marriageDate?: string;
   divorceDate?: string;
 }
@@ -183,6 +187,10 @@ export interface FamilyProject {
   meta: FamilyMeta;
   persons: Record<string, Person>;
   customLayout?: Record<string, { x: number; y: number }>;
+  /** 经典模式（主脉居中、长幼阶梯错落）下的自定义节点坐标快照 */
+  customLayoutClassic?: Record<string, { x: number; y: number }>;
+  /** 同辈齐平模式（代际齐平、从左到右）下的自定义节点坐标快照 */
+  customLayoutAligned?: Record<string, { x: number; y: number }>;
   /**
    * 自定义布局快照是否已包含侧栏卡片（养/继父母、多配偶等）的坐标。
    * 旧版快照没有这个标记，加载时会重新摆位侧栏卡，避免把历史遗留的

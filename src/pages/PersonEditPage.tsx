@@ -16,7 +16,7 @@ import {
 import { Lunar } from 'lunar-javascript';
 import { isTauri, convertLocalSrc, canDisplaySrc, saveMediaFile, deleteMediaFile } from '../utils/tauri';
 import AvatarCropModal from '../components/AvatarCropModal';
-import type { Person, Photo, Gender, LunarDate, SpouseRelationType, ChildRelationType, Relations, AdoptiveParentGroup } from '../types';
+import type { Person, Photo, Gender, LunarDate, SpouseRelationType, SpouseOrderType, ChildRelationType, Relations, AdoptiveParentGroup } from '../types';
 import {
   createAdoptiveGroupId,
   getAdoptiveFathers,
@@ -303,7 +303,7 @@ export default function PersonEditPage() {
   const [adoptiveGroups, setAdoptiveGroups] = useState<AdoptiveParentGroup[]>([]);
 
   // 配偶关系状态
-  const [spouseEntries, setSpouseEntries] = useState<{ id: string; type: SpouseRelationType }[]>([]);
+  const [spouseEntries, setSpouseEntries] = useState<{ id: string; type: SpouseRelationType; orderType?: SpouseOrderType }[]>([]);
 
   // 子女关系状态
   const [childEntries, setChildEntries] = useState<{ id: string; type: string }[]>([]);
@@ -667,7 +667,7 @@ export default function PersonEditPage() {
 
       // 加载配偶关系
       setSpouseEntries(
-        (existingPerson.relations.spouses || []).map(s => ({ id: s.id, type: s.type }))
+        (existingPerson.relations.spouses || []).map(s => ({ id: s.id, type: s.type, orderType: s.orderType }))
       );
 
       // 加载子女关系
@@ -1256,7 +1256,7 @@ export default function PersonEditPage() {
         adoptiveParents: finalAdoptiveGroups.length > 0
           ? finalAdoptiveGroups.map((group) => ({ ...group }))
           : undefined,
-        spouses: spouseEntries.filter(s => s.id),
+        spouses: spouseEntries.filter(s => s.id).map(s => ({ id: s.id, type: s.type, orderType: s.orderType || undefined })), 
         children: childEntries.filter(c => c.id).map(c => ({ id: c.id, type: c.type as any })),
       },
     };
@@ -2645,7 +2645,22 @@ export default function PersonEditPage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px', marginBottom: '12px' }}>
               {spouseEntries.map((entry, index) => (
                 <div key={`spouse-${index}`} className="relation-item-dynamic" style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                  <span className="relation-label-dynamic" style={{ minWidth: '40px' }}>配偶</span>
+                  <select
+                    className="relation-select-dynamic"
+                    style={{ minWidth: '66px', flex: 'none', padding: '6px 4px' }}
+                    value={entry.orderType || (spouseEntries.length > 1 ? (index === 0 ? 'first' : index === 1 ? 'second' : index === 2 ? 'third' : 'other') : 'other')}
+                    onChange={(e) => {
+                      const newEntries = [...spouseEntries];
+                      newEntries[index] = { ...newEntries[index], orderType: e.target.value as SpouseOrderType };
+                      setSpouseEntries(newEntries);
+                    }}
+                    title="修改配偶婚次性质"
+                  >
+                    <option value="first">原配</option>
+                    <option value="second">二婚</option>
+                    <option value="third">三婚</option>
+                    <option value="other">配偶</option>
+                  </select>
                   <RelationPersonSelect
                     style={{ flex: 2 }}
                     value={entry.id}
@@ -2818,7 +2833,8 @@ export default function PersonEditPage() {
                   type="button"
                   className="relation-menu-item"
                   onClick={() => {
-                    setSpouseEntries([...spouseEntries, { id: '', type: 'married' }]);
+                    const nextOrder: SpouseOrderType = spouseEntries.length === 0 ? 'other' : spouseEntries.length === 1 ? 'second' : 'third';
+                    setSpouseEntries([...spouseEntries, { id: '', type: 'married', orderType: nextOrder }]);
                     setShowRelationMenu(false);
                   }}
                 >
