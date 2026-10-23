@@ -1390,22 +1390,154 @@ export default function PersonEditPage() {
       }
 
       // 5. 同步子女关系（双向）
+      const oldChildren = existingPerson?.relations.children || [];
+      const newChildIds = new Set(childEntries.filter(c => c.id).map(c => c.id));
+
+      // 5a. 处理被删除的子女：清除对应指向当前人员的关系
+      for (const oldChild of oldChildren) {
+        if (!newChildIds.has(oldChild.id)) {
+          const child = project.persons[oldChild.id];
+          if (child) {
+            let changed = false;
+            if (oldChild.type === 'biological' || !oldChild.type) {
+              if (gender === 'male' && child.relations.father === currentPersonId) {
+                child.relations.father = undefined;
+                changed = true;
+              }
+              if (gender === 'female' && child.relations.mother === currentPersonId) {
+                child.relations.mother = undefined;
+                changed = true;
+              }
+            }
+            if (oldChild.type === 'adopted') {
+              const updatedGroups = removePersonFromAdoptiveGroups(child.relations.adoptiveParents, currentPersonId);
+              if (JSON.stringify(child.relations.adoptiveParents) !== JSON.stringify(updatedGroups)) {
+                child.relations.adoptiveParents = updatedGroups;
+                changed = true;
+              }
+              if (child.relations.adoptiveFather === currentPersonId) {
+                child.relations.adoptiveFather = undefined;
+                changed = true;
+              }
+              if (child.relations.adoptiveMother === currentPersonId) {
+                child.relations.adoptiveMother = undefined;
+                changed = true;
+              }
+            }
+            if (oldChild.type === 'step') {
+              if (gender === 'male' && child.relations.stepFather === currentPersonId) {
+                child.relations.stepFather = undefined;
+                changed = true;
+              }
+              if (gender === 'female' && child.relations.stepMother === currentPersonId) {
+                child.relations.stepMother = undefined;
+                changed = true;
+              }
+            }
+            if (changed) {
+              await updatePerson(oldChild.id, { relations: child.relations });
+            }
+          }
+        }
+      }
+
+      // 5b. 处理保留或新增的子女：按类型精准同步
       for (const entry of childEntries) {
         if (!entry.id) continue;
         const child = project.persons[entry.id];
-        if (child) {
-          // 根据当前人员性别设置子女的父/母
+        if (!child) continue;
+
+        let changed = false;
+        const cType = entry.type || 'biological';
+
+        if (cType === 'biological') {
           if (gender === 'male') {
             if (child.relations.father !== currentPersonId) {
               child.relations.father = currentPersonId;
-              await updatePerson(entry.id, { relations: child.relations });
+              changed = true;
             }
           } else {
             if (child.relations.mother !== currentPersonId) {
               child.relations.mother = currentPersonId;
-              await updatePerson(entry.id, { relations: child.relations });
+              changed = true;
             }
           }
+          // 若之前曾误列为养父母，清理养父母中的该人
+          const filteredGroups = removePersonFromAdoptiveGroups(child.relations.adoptiveParents, currentPersonId);
+          if (JSON.stringify(child.relations.adoptiveParents) !== JSON.stringify(filteredGroups)) {
+            child.relations.adoptiveParents = filteredGroups;
+            changed = true;
+          }
+        } else if (cType === 'adopted') {
+          // 绝对不能把养父母设为生父母
+          if (gender === 'male' && child.relations.father === currentPersonId) {
+            child.relations.father = undefined;
+            changed = true;
+          }
+          if (gender === 'female' && child.relations.mother === currentPersonId) {
+            child.relations.mother = undefined;
+            changed = true;
+          }
+
+          // 同步到子女的 adoptiveParents 分组中
+          const currentGroups = getAdoptiveGroups(child.relations);
+          const alreadyInGroup = currentGroups.some(g =>
+            gender === 'male' ? g.fatherId === currentPersonId : g.motherId === currentPersonId
+          );
+          if (!alreadyInGroup) {
+            // 检查当前人员的合法配偶是否也在该子女的养父母中，若有则拼成一组
+            const mySpouseIds = spouseEntries.filter(s => s.id).map(s => s.id);
+            let merged = false;
+            const updatedGroups = currentGroups.map(g => {
+              const partnerId = gender === 'male' ? g.motherId : g.fatherId;
+              if (partnerId && mySpouseIds.includes(partnerId) && !(gender === 'male' ? g.fatherId : g.motherId)) {
+                merged = true;
+                return {
+                  ...g,
+                  [gender === 'male' ? 'fatherId' : 'motherId']: currentPersonId,
+                };
+              }
+              return g;
+            });
+
+            if (merged) {
+              child.relations.adoptiveParents = updatedGroups;
+            } else {
+              child.relations.adoptiveParents = [
+                ...currentGroups,
+                {
+                  id: createAdoptiveGroupId(),
+                  [gender === 'male' ? 'fatherId' : 'motherId']: currentPersonId,
+                },
+              ];
+            }
+            changed = true;
+          }
+        } else if (cType === 'step') {
+          // 绝对不能把继父母设为生父母
+          if (gender === 'male' && child.relations.father === currentPersonId) {
+            child.relations.father = undefined;
+            changed = true;
+          }
+          if (gender === 'female' && child.relations.mother === currentPersonId) {
+            child.relations.mother = undefined;
+            changed = true;
+          }
+          if (gender === 'male') {
+            if (child.relations.stepFather !== currentPersonId) {
+              child.relations.stepFather = currentPersonId;
+              changed = true;
+            }
+          } else {
+            if (child.relations.stepMother !== currentPersonId) {
+              child.relations.stepMother = currentPersonId;
+              changed = true;
+            }
+          }
+        }
+
+        if (changed) {
+          await updatePerson(entry.id, { relations: child.relations });
         }
       }
     }

@@ -114,10 +114,26 @@ interface PersonNodeData {
   onCoordinateCommit?: (personId: string, x: number, y: number) => void;
   isPlaceholderHidden?: boolean;
   placeholderStatus?: 'active' | 'fading' | 'hidden';
+  isPathHighlight?: boolean;
+  isSpouseSemi?: boolean;
+  isDimmed?: boolean;
+  pulseDelay?: number;
 }
 
 function PersonNode({ data }: { data: PersonNodeData }) {
-  const { person, isPerspective, sideKind, showCoordinates, onHoverStart, onHoverEnd, onCoordinateCommit } = data;
+  const {
+    person,
+    isPerspective,
+    sideKind,
+    showCoordinates,
+    onHoverStart,
+    onHoverEnd,
+    onCoordinateCommit,
+    isPathHighlight,
+    isSpouseSemi,
+    isDimmed,
+    pulseDelay,
+  } = data;
   const navigate = useNavigate();
   const project = useFamilyStore((state) => state.project);
   const isAnonymized = useFamilyStore((state) => state.isAnonymized);
@@ -239,7 +255,8 @@ function PersonNode({ data }: { data: PersonNodeData }) {
 
   return (
     <div
-      className={`tree-person-node ${person.gender} ${isPerspective ? 'perspective' : ''}${sideKind ? ` side-${sideKind}` : ''}${isPlaceholder ? ' is-placeholder' : ''}${statusClass}`}
+      className={`tree-person-node ${person.gender} ${isPerspective ? 'perspective' : ''}${sideKind ? ` side-${sideKind}` : ''}${isPlaceholder ? ' is-placeholder' : ''}${statusClass}${isPathHighlight ? ' is-path-highlight' : ''}${isSpouseSemi ? ' is-spouse-semi' : ''}${isDimmed ? ' is-dimmed' : ''}`}
+      style={pulseDelay !== undefined ? ({ '--pulse-delay': `${pulseDelay}s` } as React.CSSProperties) : undefined}
       onDoubleClick={() => navigate(`/person/${person.id}`)}
       onMouseEnter={() => onHoverStart?.(person.id)}
       onMouseLeave={() => onHoverEnd?.()}
@@ -808,6 +825,84 @@ function TreePageContent() {
     });
   }, [placeholderIds, visiblePlaceholderIds, fadingPlaceholderIds, setNodes]);
 
+  // 当鼠标悬停在某个卡片时：
+  // 1. 黄线经过的卡片（白色脉冲）
+  // 2. 黄线卡片的原配偶（半显状态，若原配偶本身不在黄线上）
+  // 3. 其余无关卡片（弱化变淡）
+  useEffect(() => {
+    const hoverActive = !selectedNodeId && !!hoveredId;
+    const perspectiveId = project?.meta.defaultPerspectiveId;
+    const personsMap = project?.persons || {};
+
+    let pathIdsSet: Set<string> | null = null;
+    let pathDelayMap: Map<string, number> = new Map();
+    let semiSpouseSet: Set<string> = new Set();
+
+    if (hoverActive && hoveredId && perspectiveId) {
+      if (hoveredId === perspectiveId) {
+        pathIdsSet = new Set([perspectiveId]);
+        pathDelayMap.set(perspectiveId, 0);
+      } else {
+        const path = findKinshipPath(hoveredId, perspectiveId, personsMap);
+        if (path?.ids && path.ids.length > 0) {
+          pathIdsSet = new Set(path.ids);
+          // 按照连接节点顺序计算脉冲动画延迟（每经过一个节点偏移 0.18s）
+          path.ids.forEach((id, idx) => {
+            pathDelayMap.set(id, Number((idx * 0.18).toFixed(2)));
+          });
+        }
+      }
+
+      if (pathIdsSet && pathIdsSet.size > 0) {
+        pathIdsSet.forEach((pid) => {
+          const person = personsMap[pid];
+          const primarySpouseId = getPrimarySpouseId(person);
+          if (primarySpouseId && !pathIdsSet!.has(primarySpouseId)) {
+            semiSpouseSet.add(primarySpouseId);
+          }
+        });
+      }
+    }
+
+    setNodes((prevNodes) => {
+      let changed = false;
+      const nextNodes = prevNodes.map((node) => {
+        const shouldHighlight = pathIdsSet ? pathIdsSet.has(node.id) : false;
+        const shouldSemi = pathIdsSet ? semiSpouseSet.has(node.id) : false;
+        const shouldDim = pathIdsSet ? (!shouldHighlight && !shouldSemi) : false;
+        const delay = pathDelayMap.get(node.id);
+
+        const curHighlight = !!node.data.isPathHighlight;
+        const curSemi = !!node.data.isSpouseSemi;
+        const curDim = !!node.data.isDimmed;
+        const curDelay = node.data.pulseDelay;
+
+        if (
+          curHighlight === shouldHighlight &&
+          curSemi === shouldSemi &&
+          curDim === shouldDim &&
+          curDelay === delay
+        ) {
+          return node;
+        }
+
+        changed = true;
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            isPathHighlight: shouldHighlight,
+            isSpouseSemi: shouldSemi,
+            isDimmed: shouldDim,
+            pulseDelay: delay,
+          },
+        };
+      });
+
+      return changed ? nextNodes : prevNodes;
+    });
+  }, [hoveredId, selectedNodeId, project?.persons, project?.meta.defaultPerspectiveId, setNodes]);
+
   // 当节点选中或悬停状态变化时，动态更新连线样式：
   // - 点击选中：高亮该节点的父母/子女/配偶连线（原有行为）
   // - 悬停卡片：按"主视角 → 该人"的推导主路径高亮沿途连线（关系路径高亮）
@@ -887,10 +982,25 @@ function TreePageContent() {
     // ====== 悬停模式：高亮主视角到悬停者的关系路径 ======
     if (hoverActive) {
       const perspectiveId = project?.meta.defaultPerspectiveId;
-      const path = findKinshipPath(activeId, perspectiveId, project?.persons || {});
+      const personsMap = project?.persons || {};
+      const path = findKinshipPath(activeId, perspectiveId, personsMap);
       const pathEdgeIds = new Set<string>(
-        path ? findPathEdgeIds(path.ids, edgesRef.current as any, project?.persons || {}) : []
+        path ? findPathEdgeIds(path.ids, edgesRef.current as any, personsMap) : []
       );
+      const pathNodeIds = new Set<string>(path?.ids || (activeId === perspectiveId && perspectiveId ? [perspectiveId] : []));
+
+      // 收集黄线卡片与其原配偶之间的半显连线配对（双向记录）
+      const semiSpousePairSet = new Set<string>();
+      if (pathNodeIds.size > 0) {
+        pathNodeIds.forEach((pid) => {
+          const person = personsMap[pid];
+          const primarySpouseId = getPrimarySpouseId(person);
+          if (primarySpouseId && !pathNodeIds.has(primarySpouseId)) {
+            semiSpousePairSet.add(`${pid}:${primarySpouseId}`);
+            semiSpousePairSet.add(`${primarySpouseId}:${pid}`);
+          }
+        });
+      }
 
       setEdges((prevEdges) => {
         const nextEdges = prevEdges.map((edge) => {
@@ -913,6 +1023,33 @@ function TreePageContent() {
               label: isSpouse ? '配偶' : undefined,
               labelStyle: isSpouse ? { fontSize: 10, fill: 'oklch(72% 0.16 70)', transform: 'translateY(-6px)' } : undefined,
               labelBgStyle: isSpouse ? { fill: 'transparent' } : undefined,
+              labelBgPadding: undefined,
+            };
+          }
+
+          // 路径外但属于「黄线卡片与其原配偶」的夫妻线：半显粉红线
+          const isSemiSpouseEdge = isSpouse && semiSpousePairSet.has(`${edge.source}:${edge.target}`);
+          if (isSemiSpouseEdge) {
+            nextStyle.stroke = 'oklch(65% 0.22 350)'; // 配偶粉红色
+            nextStyle.strokeWidth = 2;
+            nextStyle.strokeDasharray = '4,4';
+            nextStyle.opacity = 0.6; // 半显
+            return {
+              ...edge,
+              animated: false,
+              className: '',
+              style: nextStyle,
+              markerStart: undefined,
+              markerEnd: undefined,
+              label: '配偶',
+              labelStyle: {
+                fontSize: 10,
+                fill: 'oklch(65% 0.22 350)',
+                opacity: 0.6,
+                fontWeight: 600,
+                transform: 'translateY(-6px)',
+              },
+              labelBgStyle: { fill: 'transparent' },
               labelBgPadding: undefined,
             };
           }
@@ -962,7 +1099,8 @@ function TreePageContent() {
             markerStart: undefined,
             markerEnd: undefined,
             label: isSpouse ? '配偶' : undefined,
-            labelStyle: isSpouse ? { fontSize: 10, fill: '#71717a', transform: 'translateY(-6px)' } : undefined,
+            // 注意：不经过的配偶文字透明度也降为 0.15
+            labelStyle: isSpouse ? { fontSize: 10, fill: '#71717a', opacity: 0.15, transform: 'translateY(-6px)' } : undefined,
             labelBgStyle: isSpouse ? { fill: 'transparent' } : undefined,
             labelBgPadding: undefined,
           };
@@ -2964,6 +3102,34 @@ function TreePageContent() {
       )}
     </div>
   );
+}
+
+/**
+ * 获取人物的原配偶 ID：
+ * 多个配偶时只显示一个原配偶（优先结婚日期最早；若无日期则取列表第一位，即使离异或已故）。
+ */
+function getPrimarySpouseId(person: Person | undefined): string | null {
+  if (!person || !person.relations || !person.relations.spouses || person.relations.spouses.length === 0) {
+    return null;
+  }
+  const spouses = person.relations.spouses.filter((s) => Boolean(s.id));
+  if (spouses.length === 0) return null;
+  if (spouses.length === 1) return spouses[0].id;
+
+  let earliest = spouses[0];
+  let earliestDate = earliest.marriageDate || '';
+
+  for (let i = 1; i < spouses.length; i++) {
+    const s = spouses[i];
+    if (s.marriageDate) {
+      if (!earliestDate || s.marriageDate < earliestDate) {
+        earliest = s;
+        earliestDate = s.marriageDate;
+      }
+    }
+  }
+
+  return earliest.id;
 }
 
 export default function TreePage() {

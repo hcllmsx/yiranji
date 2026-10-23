@@ -992,3 +992,71 @@
 .tree-node-avatar.clickable:hover img {
   transform: scale(1.08);
 }
+
+/* 悬停路径高亮时的其余卡片淡化效果 */
+.tree-person-node.is-dimmed {
+  opacity: 0.22;
+  filter: grayscale(0.65);
+  box-shadow: none;
+  transition: opacity 0.25s ease, filter 0.25s ease, box-shadow 0.25s ease;
+  pointer-events: auto;
+}
+
+.tree-person-node.is-dimmed:hover {
+  opacity: 1;
+  filter: none;
+}
+
+/* 悬停路径经过卡片的原配偶半显状态 */
+.tree-person-node.is-spouse-semi {
+  opacity: 0.58;
+  filter: grayscale(0.2);
+  border-color: oklch(72% 0.12 350 / 0.6);
+  box-shadow: 0 0 0 1px oklch(72% 0.15 350 / 0.3), var(--shadow-sm);
+  transition: opacity 0.25s ease, filter 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+  pointer-events: auto;
+}
+
+.tree-person-node.is-spouse-semi:hover {
+  opacity: 1;
+  filter: none;
+}
+
+/* 黄线经过的卡片：层级提升，卡片本体保持原有边框与男女颜色 */
+.tree-person-node.is-path-highlight {
+  z-index: 5;
+  transition: opacity 0.25s ease, filter 0.25s ease, box-shadow 0.25s ease;
+}
+
+/* 卡片长方形浅黄色（#FFFFE0）水波脉冲动效：
+ * 采用经典的 easeOutCubic (三次贝塞尔缓动) 自然物理水波消散曲线，全程无生硬减速卡顿；
+ * z-index: -1 确保从卡片底层冲出，完全不遮挡正面的男女色彩线条；
+ * 配合 CSS 变量 --pulse-delay 沿关系路径顺滑传递。
+ */
+.tree-person-node.is-path-highlight::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border-radius: calc(var(--radius-md) + 2px);
+  border: 1.5px solid #FFFFE0;
+  pointer-events: none;
+  z-index: -1;
+  animation: card-rect-sonar-pulse 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+  animation-delay: var(--pulse-delay, 0s);
+}
+
+@keyframes card-rect-sonar-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+    box-shadow: 0 0 8px rgba(255, 255, 224, 0.85);
+  }
+  100% {
+    transform: scale(1.11, 1.22);
+    opacity: 0;
+    box-shadow: 0 0 26px rgba(255, 255, 224, 0);
+  }
+}

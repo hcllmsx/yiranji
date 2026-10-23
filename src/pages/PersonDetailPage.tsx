@@ -47,6 +47,19 @@ export default function PersonDetailPage() {
     onConfirm: () => void;
   } | null>(null);
 
+  // ESC 键关闭灯箱
+  useEffect(() => {
+    if (!lightboxPhoto && !lightboxVideo) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setLightboxPhoto(null);
+        setLightboxVideo(null);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [lightboxPhoto, lightboxVideo]);
+
   if (!person) {
     return (
       <div className="page-container">
@@ -487,19 +500,6 @@ export default function PersonDetailPage() {
       /* ignore */
     }
   };
-
-  // ESC 键关闭灯箱
-  useEffect(() => {
-    if (!lightboxPhoto && !lightboxVideo) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setLightboxPhoto(null);
-        setLightboxVideo(null);
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [lightboxPhoto, lightboxVideo]);
 
   // 格式化视频时长为 mm:ss 或 hh:mm:ss
   const formatVideoDuration = (seconds: number): string => {

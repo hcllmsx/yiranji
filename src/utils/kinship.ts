@@ -52,10 +52,8 @@ function buildAdjacency(persons: Record<string, any>): Map<string, AdjEdge[]> {
       add(r.mother, p.id, childStep, 0);
     }
 
-    // 养父母 / 继父母（penalty=3，生父母路径优先）
-    // 反向的“父母 → 子女”边必须带 养/继 语义，否则养父母会被推导成亲生父母
+    // 养父母（penalty=3，生父母路径优先；画布上养父母与养子女有直接虚线）
     const adoptedChildStep: KinStep = p.gender === 'male' ? 'AS' : 'AD';
-    const stepChildStep: KinStep = p.gender === 'male' ? 'SS' : 'SD';
     getAdoptiveFathers(r).forEach((afId) => {
       add(p.id, afId, 'AF', 3);
       add(afId, p.id, adoptedChildStep, 3);
@@ -64,14 +62,8 @@ function buildAdjacency(persons: Record<string, any>): Map<string, AdjEdge[]> {
       add(p.id, amId, 'AM', 3);
       add(amId, p.id, adoptedChildStep, 3);
     });
-    if (r.stepFather && persons[r.stepFather]) {
-      add(p.id, r.stepFather, 'SF', 3);
-      add(r.stepFather, p.id, stepChildStep, 3);
-    }
-    if (r.stepMother && persons[r.stepMother]) {
-      add(p.id, r.stepMother, 'SM', 3);
-      add(r.stepMother, p.id, stepChildStep, 3);
-    }
+    // 继父母在树上不画与孩子的直接连线，由「继父母—生父母（夫妻）」与「生父母—孩子」串联，
+    // 此处不建直连边，确保寻路走生父母中转
 
     // 配偶（姻亲 penalty=2，血亲路径优先；同性配偶同样按 丈夫/妻子 走）
     (r.spouses || []).forEach((s: any) => {
@@ -82,17 +74,15 @@ function buildAdjacency(persons: Record<string, any>): Map<string, AdjEdge[]> {
       add(s.id, p.id, spouse.gender === 'female' ? 'H' : 'W', 2);
     });
 
-    // 子女（按 child.type 映射）
+    // 子女（按 child.type 映射，继子女通过生父母夫妻连线串联，不加直连边）
     (r.children || []).forEach((c: any) => {
+      if (c.type === 'step') return;
       const child = persons[c?.id];
       if (!child) return;
       let step: KinStep;
       let penalty = 0;
       if (c.type === 'adopted') {
         step = child.gender === 'male' ? 'AS' : 'AD';
-        penalty = 3;
-      } else if (c.type === 'step') {
-        step = child.gender === 'male' ? 'SS' : 'SD';
         penalty = 3;
       } else {
         step = child.gender === 'male' ? 'S' : 'D';
@@ -102,9 +92,7 @@ function buildAdjacency(persons: Record<string, any>): Map<string, AdjEdge[]> {
       const parentStep: KinStep =
         c.type === 'adopted'
           ? p.gender === 'male' ? 'AF' : 'AM'
-          : c.type === 'step'
-            ? p.gender === 'male' ? 'SF' : 'SM'
-            : p.gender === 'male' ? 'F' : 'M';
+          : p.gender === 'male' ? 'F' : 'M';
       add(child.id, p.id, parentStep, penalty);
     });
   }
@@ -129,7 +117,7 @@ export function findKinshipPath(
   targetId: string,
   perspectiveId: string | undefined,
   persons: Record<string, any>,
-  maxDepth = 8
+  maxDepth = 30
 ): KinshipPath | null {
   if (!perspectiveId || !targetId || perspectiveId === targetId) return null;
   if (!persons[perspectiveId] || !persons[targetId]) return null;
@@ -538,6 +526,8 @@ function spouseifyTitle(t: string): string {
     '姑母': '姑父',
     '舅父': '舅母',
     '姨母': '姨父',
+    '父亲': '继母',
+    '母亲': '继父',
   };
   if (map[t]) return map[t];
   if (t.endsWith('兄')) return t.slice(0, -1) + '嫂';
