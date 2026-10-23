@@ -5,6 +5,10 @@
   max-width: 1200px;
   margin: 0 auto;
   animation: fadeIn var(--transition-normal) ease;
+  min-height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 双栏布局容器 */
@@ -12,6 +16,7 @@
   display: flex;
   gap: var(--space-6);
   align-items: flex-start;
+  flex: 1;
 }
 
 /* 左侧分类导航菜单 */
@@ -786,8 +791,8 @@
 
 /* ===== 纯净页脚（非卡片、无外框） ===== */
 .settings-about-footer {
-  margin-top: var(--space-10);
-  padding: var(--space-6) 0 var(--space-8);
+  margin-top: auto;
+  padding: var(--space-8) 0 var(--space-4);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -796,6 +801,7 @@
   background: transparent;
   color: var(--color-text-tertiary);
   font-size: 12px;
+  flex-shrink: 0;
 }
 
 .settings-footer-update-line,
