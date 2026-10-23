@@ -4,36 +4,15 @@
 // 上传时只补齐云端缺失的媒体，所以同一个家谱反复同步几乎不消耗流量。
 
 import type { FamilyProject } from '../types';
+import type { SyncSettings } from './appSettings';
+import {
+  DEFAULT_SYNC_SETTINGS,
+  getSyncSettings,
+  saveSyncSettings,
+} from './appSettings';
 
-const SETTINGS_KEY = 'yiranji_sync_settings_v1';
-
-export interface SyncSettings {
-  /** 总开关：关掉后不显示云端更新提示 */
-  enabled: boolean;
-  /** WebDAV 服务地址，如 https://dav.jianguoyun.com/dav/ */
-  server: string;
-  username: string;
-  password: string;
-  /** 云端根目录（每个家谱会再建一个以同步 ID 命名的子目录） */
-  remoteRoot: string;
-  /** 打开档案时自动检查云端是否有更新 */
-  autoCheck: boolean;
-  /** 保存档案后自动把改动传到云端（静默、去抖，失败不影响保存） */
-  autoPush: boolean;
-  /** 允许用本地覆盖云端的较新版本 */
-  forceOverwrite: boolean;
-}
-
-export const DEFAULT_SYNC_SETTINGS: SyncSettings = {
-  enabled: false,
-  server: '',
-  username: '',
-  password: '',
-  remoteRoot: 'yiranji',
-  autoCheck: true,
-  autoPush: false,
-  forceOverwrite: false,
-};
+export type { SyncSettings };
+export { DEFAULT_SYNC_SETTINGS, getSyncSettings, saveSyncSettings };
 
 /** 常见免费 WebDAV 服务，用于输入框提示 */
 export const WEBDAV_PRESETS = [
@@ -53,23 +32,6 @@ export const WEBDAV_PRESETS = [
     hint: '自建服务请使用 WebDAV 完整地址，路径一般以 remote.php/dav/files/ 开头。',
   },
 ];
-
-export function getSyncSettings(): SyncSettings {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return { ...DEFAULT_SYNC_SETTINGS };
-    const parsed = JSON.parse(raw) as Partial<SyncSettings>;
-    return { ...DEFAULT_SYNC_SETTINGS, ...parsed };
-  } catch {
-    return { ...DEFAULT_SYNC_SETTINGS };
-  }
-}
-
-export function saveSyncSettings(patch: Partial<SyncSettings>): SyncSettings {
-  const next = { ...getSyncSettings(), ...patch };
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
-  return next;
-}
 
 /** 是否已经填好足够发起同步的信息 */
 export function isSyncConfigured(s: SyncSettings = getSyncSettings()): boolean {

@@ -5,6 +5,7 @@ import MainLayout from './components/MainLayout';
 import UpdateDialog from './components/UpdateDialog';
 import { checkForUpdate } from './utils/updateChecker';
 import { useUpdateStore } from './store/updateStore';
+import { initAppSettings } from './utils/appSettings';
 import './index.css';
 
 // 页面级代码分割：各页面按需加载，减小首屏 bundle 体积
@@ -37,6 +38,7 @@ function App() {
   // 启动静默检查更新：仅每次启动检查一次，发现新版本弹窗提示；失败不提示
   const didSilentCheckRef = useRef(false);
   useEffect(() => {
+    initAppSettings();
     if (didSilentCheckRef.current) return;
     didSilentCheckRef.current = true;
     checkForUpdate()

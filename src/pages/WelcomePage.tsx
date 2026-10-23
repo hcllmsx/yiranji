@@ -11,6 +11,7 @@ import {
   installSampleWorkspace,
 } from '../utils/tauri';
 import { getDefaultSaveDir, shouldShowSampleEntry, dismissSampleEntry } from '../utils/appPrefs';
+import { subscribeSettings } from '../utils/appSettings';
 import './WelcomePage.css';
 
 export default function WelcomePage() {
@@ -44,6 +45,13 @@ export default function WelcomePage() {
 
   // 是否在首页显示「示例家谱」按钮（首次未点过，或升级新版本后显示）
   const [showSampleButton, setShowSampleButton] = useState(() => shouldShowSampleEntry(__APP_VERSION__));
+
+  useEffect(() => {
+    setShowSampleButton(shouldShowSampleEntry(__APP_VERSION__));
+    return subscribeSettings(() => {
+      setShowSampleButton(shouldShowSampleEntry(__APP_VERSION__));
+    });
+  }, []);
 
   // 自定义对话框相关
   const [dialog, setDialog] = useState<{

@@ -1,4 +1,5 @@
 pub mod webdav;
+pub mod settings;
 mod yrj_file;
 
 use std::fs;
@@ -203,7 +204,20 @@ fn install_sample_workspace(app: tauri::AppHandle, force: Option<bool>) -> Resul
         .path()
         .resource_dir()
         .map_err(|e| format!("无法定位资源目录: {}", e))?;
-    let src = resource_dir.join("sample-family");
+    // 开发调试模式下优先直接读取源码资源目录，避免受 target/debug 增量构建缓存残留干扰
+    let src = if cfg!(debug_assertions) {
+        let candidate_paths = [
+            PathBuf::from("resources/sample-family"),
+            PathBuf::from("src-tauri/resources/sample-family"),
+            PathBuf::from("../src-tauri/resources/sample-family"),
+        ];
+        candidate_paths
+            .into_iter()
+            .find(|p| p.join("project.json").is_file())
+            .unwrap_or_else(|| resource_dir.join("sample-family"))
+    } else {
+        resource_dir.join("sample-family")
+    };
     let src_project = src.join("project.json");
     if !src_project.is_file() {
         return Err("安装包中未找到示例家谱".to_string());
@@ -216,7 +230,7 @@ fn install_sample_workspace(app: tauri::AppHandle, force: Option<bool>) -> Resul
         .join("以苒纪示例家谱");
     let dest_project = dest.join("project.json");
 
-    let should_copy = if force.unwrap_or(false) || !dest_project.is_file() {
+    let should_copy = if force.unwrap_or(false) || !dest_project.is_file() || cfg!(debug_assertions) {
         true
     } else {
         let src_updated = get_project_updated_at(&src_project);
@@ -689,7 +703,10 @@ pub fn run() {
             webdav::webdav_remote_meta,
             webdav::webdav_list_projects,
             webdav::webdav_push,
-            webdav::webdav_pull
+            webdav::webdav_pull,
+            settings::load_app_settings,
+            settings::save_app_settings,
+            settings::get_settings_file_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

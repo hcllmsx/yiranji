@@ -36,6 +36,7 @@ import {
   WEBDAV_PRESETS,
   type SyncSettings,
 } from '../utils/cloudSync';
+import { getSettingsPath, subscribeSettings } from '../utils/appSettings';
 import { checkForUpdate } from '../utils/updateChecker';
 import { useUpdateStore } from '../store/updateStore';
 import { createAnonymizedExport, sha256 } from '../utils';
@@ -94,7 +95,20 @@ export default function SettingsPage() {
 
   // 多设备同步（WebDAV）
   const [sync, setSync] = useState<SyncSettings>(() => getSyncSettings());
+  const [showSyncPass, setShowSyncPass] = useState(false);
+  const [settingsFilePath, setSettingsFilePath] = useState<string>('');
   const [syncBusy, setSyncBusy] = useState<'' | 'test' | 'push' | 'pull'>('');
+
+  useEffect(() => {
+    getSettingsPath().then((path) => {
+      if (path) setSettingsFilePath(path);
+    });
+    return subscribeSettings(() => {
+      setSampleEntryEnabledState(shouldShowSampleEntry(__APP_VERSION__));
+      setSync(getSyncSettings());
+      setTreeLayoutModeState(getTreeLayoutMode());
+    });
+  }, []);
   const [remoteMeta, setRemoteMeta] = useState<RemoteSyncMeta | null>(null);
   const [remoteProjects, setRemoteProjects] = useState<RemoteProject[] | null>(null);
   const [loadingRemoteList, setLoadingRemoteList] = useState(false);
@@ -999,16 +1013,48 @@ export default function SettingsPage() {
                         </div>
                         <div className="form-group">
                           <label className="form-label" htmlFor="syncPass">应用密码</label>
-                          <input
-                            id="syncPass"
-                            type="password"
-                            className="form-input"
-                            value={sync.password}
-                            autoComplete="new-password"
-                            spellCheck={false}
-                            placeholder="WebDAV 应用密码"
-                            onChange={(e) => patchSync({ password: e.target.value })}
-                          />
+                          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                            <input
+                              id="syncPass"
+                              type={showSyncPass ? 'text' : 'password'}
+                              className="form-input"
+                              value={sync.password}
+                              autoComplete="new-password"
+                              spellCheck={false}
+                              placeholder="WebDAV 应用密码"
+                              style={{ paddingRight: '38px' }}
+                              onChange={(e) => patchSync({ password: e.target.value })}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowSyncPass(!showSyncPass)}
+                              style={{
+                                position: 'absolute',
+                                right: '6px',
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                color: 'var(--color-text-secondary, #666)',
+                                padding: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                              title={showSyncPass ? '隐藏密码' : '显示密码'}
+                            >
+                              {showSyncPass ? (
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                                  <line x1="1" y1="1" x2="23" y2="23"></line>
+                                </svg>
+                              ) : (
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                  <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                              )}
+                            </button>
+                          </div>
                         </div>
                       </div>
 
@@ -1112,6 +1158,37 @@ export default function SettingsPage() {
                         账号密码只保存在本机。坚果云要用「账户信息 → 安全选项 → 应用密码」生成的那串密码，不是登录密码。
                         两台电脑都开启同步后，可在本页手动上传或拉取档案，也可按设置自动检查云端更新。
                       </p>
+
+                      {settingsFilePath && (
+                        <div style={{
+                          marginTop: '12px',
+                          padding: '10px 14px',
+                          background: 'var(--color-bg-secondary, rgba(0,0,0,0.03))',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          color: 'var(--color-text-secondary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          border: '1px solid var(--color-border-light, #e5e7eb)'
+                        }}>
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <span>软件配置已安全保存在本机：</span>
+                            <code style={{ fontSize: '11px', background: 'rgba(0,0,0,0.05)', padding: '2px 5px', borderRadius: '4px' }}>{settingsFilePath}</code>
+                            <span style={{ marginLeft: '8px', color: 'var(--color-text-tertiary)' }}>（WebDAV 密码经本地硬件特征派生 AES-256-GCM 强加密保护）</span>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ flexShrink: 0, padding: '3px 10px', fontSize: '12px' }}
+                            onClick={() => openInExplorer(settingsFilePath)}
+                            title="在资源管理器中打开配置所在文件夹"
+                          >
+                            打开配置目录
+                          </button>
+                        </div>
+                      )}
 
                       <div className="sync-restore">
                         <div className="sync-restore-head">

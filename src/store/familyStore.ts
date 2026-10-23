@@ -39,6 +39,7 @@ import {
   registerLegacyAvatarOriginals,
 } from '../utils/projectPortable';
 import { getSyncSettings, isSyncConfigured, remoteDirFor, ensureSyncKey } from '../utils/cloudSync';
+import { saveRecentProjectsList } from '../utils/appSettings';
 import { migrateProjectData, type MigrationReport } from '../utils/dataMigration';
 
 // ==================== 持久化工具 ====================
@@ -86,6 +87,7 @@ function getRecentProjects(): RecentProject[] {
 
 function saveRecentProjects(projects: RecentProject[]) {
   localStorage.setItem(RECENT_KEY, JSON.stringify(projects));
+  saveRecentProjectsList(projects);
 }
 
 // ==================== 保存后自动上传 ====================

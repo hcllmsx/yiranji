@@ -482,3 +482,33 @@ export async function webdavPull(
     workspacePath,
   });
 }
+
+// ==================== 统一软件设置（settings.json） ====================
+
+export interface AppSettingsPayload {
+  sync?: any;
+  prefs?: any;
+  recentProjects?: any[];
+  [key: string]: any;
+}
+
+/** 从 settings.json 读取配置（WebDAV 密码已由后端自动解密） */
+export async function loadAppSettings(): Promise<AppSettingsPayload | null> {
+  const api = await getTauriApi();
+  if (!api) return null;
+  return api.invoke<AppSettingsPayload>('load_app_settings');
+}
+
+/** 保存配置到 settings.json（WebDAV 密码由后端进行高强度加密混淆后落盘） */
+export async function saveAppSettings(settings: AppSettingsPayload): Promise<AppSettingsPayload | null> {
+  const api = await getTauriApi();
+  if (!api) return null;
+  return api.invoke<AppSettingsPayload>('save_app_settings', { settings });
+}
+
+/** 获取 settings.json 文件的物理绝对路径 */
+export async function getSettingsFilePath(): Promise<string | null> {
+  const api = await getTauriApi();
+  if (!api) return null;
+  return api.invoke<string>('get_settings_file_path');
+}
