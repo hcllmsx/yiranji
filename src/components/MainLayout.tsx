@@ -6,9 +6,10 @@ import { formatSyncTime, getSyncSettings } from '../utils/cloudSync';
 import type { RemoteSyncMeta } from '../utils/tauri';
 import { exportTreeImage, type RenderScale } from '../utils/imageExport';
 import { exportTreeGraphHtml } from '../utils/htmlGraphExport';
+import { exportTreeHtml } from '../utils/htmlExport';
 import { waitTreeCanvasReady } from '../utils/exportUtils';
 import MediaImportProgress from './MediaImportProgress';
-import SaveAsDialog, { type NotifyFn } from './SaveAsDialog';
+import SaveAsDialog, { type NotifyFn, type HtmlExportStyle } from './SaveAsDialog';
 import DataMigrationDialog from './DataMigrationDialog';
 import './MainLayout.css';
 
@@ -106,10 +107,16 @@ export default function MainLayout() {
     [ensureTreeCanvas, familyName]
   );
 
-  // HTML 图谱导出不依赖页面 DOM（自己算布局），因此无需先切到家谱树
-  const handleExportHtml = useCallback(async (options?: { includePlaceholders?: boolean }) => {
-    return exportTreeGraphHtml(`${familyName}-家谱图.html`, `${familyName} · 家谱图`, options);
-  }, [familyName]);
+  // HTML 导出不依赖页面 DOM（自己算布局），因此无需先切到家谱树
+  const handleExportHtml = useCallback(
+    async (style: HtmlExportStyle, options?: { includePlaceholders?: boolean }) => {
+      if (style === 'outline') {
+        return exportTreeHtml(`${familyName}-家谱大纲.html`, `${familyName} · 家谱大纲`, options);
+      }
+      return exportTreeGraphHtml(`${familyName}-家谱图.html`, `${familyName} · 家谱图`, options);
+    },
+    [familyName]
+  );
 
   if (!project) {
     navigate('/');

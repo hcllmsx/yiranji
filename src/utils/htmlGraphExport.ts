@@ -91,7 +91,7 @@ function buildUnit(
   if (!person || used.has(personId)) return null;
   used.add(personId);
 
-  const members: Person[] = [person];
+  const validSpouses: Person[] = [];
 
   // 配偶并入本块（同一个人只出现一次）
   (person.relations.spouses || []).forEach((sp) => {
@@ -99,8 +99,19 @@ function buildUnit(
     if (!spouse || used.has(spouse.id)) return;
     // 配偶若另有父母记录，说明归属于对方家族，这里仍然并块展示，但避免重复
     used.add(spouse.id);
-    members.push(spouse);
+    validSpouses.push(spouse);
   });
+
+  // 多配偶排布对齐主程序家谱树（TreePage）逻辑：
+  // 若有 2 位及以上配偶，首任配偶（原配/前配偶）排在本人左侧，本人居中，后续配偶排在右侧；
+  // 单配偶或无配偶则保持 [本人, ...配偶] 顺序。
+  let members: Person[];
+  if (validSpouses.length >= 2) {
+    const [firstSpouse, ...otherSpouses] = validSpouses;
+    members = [firstSpouse, person, ...otherSpouses];
+  } else {
+    members = [person, ...validSpouses];
+  }
 
   const children = sortSiblings(
     (person.relations.children || [])
@@ -508,6 +519,8 @@ body {
   background: #faf9f5;
   display: flex;
   flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* ===== 顶部栏 ===== */
@@ -674,7 +687,6 @@ h1 { font-size: 16px; font-weight: 600; margin: 0; white-space: nowrap; overflow
   position: absolute;
   left: 0; top: 0;
   transform-origin: 0 0;
-  will-change: transform;
 }
 svg.links { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 svg.links path { fill: none; stroke: #cfc6b4; stroke-width: 1.6; }
@@ -779,7 +791,7 @@ footer a { display: inline-flex; align-items: center; gap: 7px; text-decoration:
   </div>
   <div class="toolbar">
     <button id="perspBtn" class="wide persp-btn" title="切换主视角">
-      <span class="persp-icon">🧭</span><span class="persp-name" id="perspName">${perspectiveLabel}</span>
+      <span class="persp-icon">⭐</span><span class="persp-name" id="perspName">${perspectiveLabel}</span>
     </button>
     <button id="zoomOut" title="缩小">−</button>
     <span class="zoom-label" id="zoomLabel">100%</span>

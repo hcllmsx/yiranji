@@ -224,6 +224,8 @@
 }
 
 .saveas-dialog {
+  position: relative;
+  overflow: hidden;
   width: 780px;
   max-width: calc(100vw - 48px);
   background-color: var(--color-bg-card);
@@ -691,4 +693,55 @@
 .sync-banner-close:hover {
   background-color: var(--color-bg-hover);
   color: var(--color-text-primary);
+}
+
+
+/* ==================== 另存为导出 Loading 蒙层 ==================== */
+
+.saveas-loading-overlay {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(4px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  z-index: 20;
+  border-radius: var(--radius-lg);
+  animation: saveasFadeIn 0.2s ease;
+}
+
+[data-theme='dark'] .saveas-loading-overlay {
+  background-color: rgba(28, 25, 23, 0.9);
+}
+
+.saveas-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3.5px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: saveasSpin 0.8s linear infinite;
+}
+
+@keyframes saveasSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.saveas-loading-text {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.saveas-loading-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
 }
