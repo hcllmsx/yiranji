@@ -104,3 +104,14 @@ export function resetSampleEntry() {
   delete prefs.sampleDismissedVersion;
   saveAppPrefs(prefs);
 }
+
+/** 设置是否在首页显示示例家谱按钮 */
+export function setSampleEntryEnabled(enabled: boolean, currentAppVersion: string) {
+  const prefs = getAppPrefs();
+  if (enabled) {
+    delete prefs.sampleDismissedVersion;
+  } else {
+    prefs.sampleDismissedVersion = currentAppVersion;
+  }
+  saveAppPrefs(prefs);
+}

@@ -97,6 +97,9 @@
 }
 
 .settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: var(--space-6);
 }
 
@@ -105,6 +108,13 @@
   font-size: var(--text-2xl);
   color: var(--color-text-primary);
   margin: 0;
+}
+
+.settings-header-save-btn {
+  padding: 8px 22px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  box-shadow: var(--shadow-sm);
 }
 
 .settings-form {
@@ -652,4 +662,178 @@
   font-size: 12px;
   line-height: 1.6;
   color: var(--color-text-tertiary);
+}
+
+
+/* ===== iOS 胶囊滑块开关样式 ===== */
+.ios-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.ios-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.ios-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background-color: var(--color-border);
+  transition: background-color 0.25s ease;
+  border-radius: 24px;
+}
+
+.ios-slider:before {
+  position: absolute;
+  content: '';
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: #ffffff;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.ios-switch input:checked + .ios-slider {
+  background-color: var(--color-accent);
+}
+
+.ios-switch input:checked + .ios-slider:before {
+  transform: translateX(20px);
+}
+
+.ios-switch:focus-within .ios-slider {
+  box-shadow: 0 0 0 2px var(--color-accent-lighter);
+}
+
+/* ===== 横向通用开关行 ===== */
+.toggle-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.toggle-setting-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.toggle-setting-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.toggle-setting-desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--color-text-tertiary);
+}
+
+/* ===== 档案存储：操作按钮与内联路径 ===== */
+.path-actions--between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.path-actions-left {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.path-input-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.path-input-inline .path-display {
+  flex: 1;
+  min-width: 0;
+}
+
+.path-inline-btn {
+  padding: 8px 12px;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.path-inline-clear-btn {
+  padding: 6px 10px;
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}
+
+.path-inline-clear-btn:hover {
+  color: var(--color-danger, #ef4444);
+}
+
+/* ===== 纯净页脚（非卡片、无外框） ===== */
+.settings-about-footer {
+  margin-top: var(--space-10);
+  padding: var(--space-6) 0 var(--space-8);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}
+
+.settings-footer-update-line,
+.settings-footer-links-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.footer-dot {
+  opacity: 0.5;
+}
+
+.footer-link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.15s ease, text-decoration 0.15s ease;
+}
+
+.footer-link-btn:hover:not(:disabled) {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+.footer-link-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.settings-footer-copyright {
+  margin-top: 4px;
+  color: var(--color-text-tertiary);
+  opacity: 0.85;
 }
