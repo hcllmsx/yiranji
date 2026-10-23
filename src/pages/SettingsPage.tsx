@@ -41,6 +41,10 @@ import { useUpdateStore } from '../store/updateStore';
 import { createAnonymizedExport, sha256 } from '../utils';
 import './SettingsPage.css';
 
+type SettingsTab = 'basic' | 'storage' | 'advanced';
+/** 本次运行会话内记忆选中的设置选项卡（仅在软件彻底关闭重启后才重置回 'basic'） */
+let sessionActiveTab: SettingsTab = 'basic';
+
 export default function SettingsPage() {
   const navigate = useNavigate();
   const {
@@ -56,8 +60,11 @@ export default function SettingsPage() {
     restoreProjectFromCloud,
   } = useFamilyStore();
 
-  type SettingsTab = 'basic' | 'storage' | 'advanced';
-  const [activeTab, setActiveTab] = useState<SettingsTab>('basic');
+  const [activeTab, setActiveTabState] = useState<SettingsTab>(() => sessionActiveTab);
+  const setActiveTab = (tab: SettingsTab) => {
+    sessionActiveTab = tab;
+    setActiveTabState(tab);
+  };
   const [familyName, setFamilyName] = useState(project?.meta.familyName || '');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -190,24 +197,23 @@ export default function SettingsPage() {
   // -------------------- 表单提交 --------------------
   if (!project) return null;
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleFamilyNameSave = () => {
     setMessage(null);
-
     const trimmedName = familyName.trim();
     if (!trimmedName) {
-      setMessage({ text: '家谱名称不能为空', type: 'error' });
+      setFamilyName(project.meta.familyName || '');
+      showToast('家谱名称不能为空，已恢复原名称', 'error');
       return;
     }
 
     try {
       if (trimmedName !== project.meta.familyName) {
         updateMeta({ familyName: trimmedName });
+        showToast('家谱名称已更新！已自动同步工作区。', 'success');
       }
-      showToast('保存设置成功！已自动更新当前工作区。', 'success');
     } catch (err) {
       console.error(err);
-      setMessage({ text: '保存失败，请重试', type: 'error' });
+      showToast('家谱名称更新失败，请重试', 'error');
     }
   };
 
@@ -695,13 +701,6 @@ export default function SettingsPage() {
       {/* ---- 页面主体顶部 ---- */}
       <div className="settings-header">
         <h2>⚙️ 软件设置</h2>
-        <button
-          type="submit"
-          form="settings-form"
-          className="btn btn-primary settings-header-save-btn"
-        >
-          💾 保存设置
-        </button>
       </div>
 
       <div className="settings-layout">
@@ -735,7 +734,7 @@ export default function SettingsPage() {
 
         {/* 右侧配置面板 */}
         <div className="settings-content">
-          <form id="settings-form" onSubmit={handleSave} className="settings-form">
+          <div className="settings-form">
             {/* 1. 家谱设置与信息显示 */}
             {activeTab === 'basic' && (
               <div className="settings-section">
@@ -748,15 +747,36 @@ export default function SettingsPage() {
 
                 <div className="form-group">
                   <label className="form-label" htmlFor="familyName">家谱名称</label>
-                  <input
-                    id="familyName"
-                    type="text"
-                    className="form-input"
-                    value={familyName}
-                    onChange={(e) => setFamilyName(e.target.value)}
-                    placeholder="请输入家谱名称"
-                    maxLength={50}
-                  />
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                      id="familyName"
+                      type="text"
+                      className="form-input"
+                      style={{ flex: 1 }}
+                      value={familyName}
+                      autoComplete="off"
+                      spellCheck={false}
+                      onChange={(e) => setFamilyName(e.target.value)}
+                      onBlur={handleFamilyNameSave}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.currentTarget.blur();
+                        }
+                      }}
+                      placeholder="请输入家谱名称"
+                      maxLength={50}
+                    />
+                    {familyName.trim() !== (project.meta.familyName || '') && (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary"
+                        onClick={handleFamilyNameSave}
+                      >
+                        保存名称
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* 家谱树排版方式 */}
@@ -804,7 +824,7 @@ export default function SettingsPage() {
                     <div className="toggle-setting-info">
                       <span className="toggle-setting-title">首页显示「示例家谱」入口</span>
                       <span className="toggle-setting-desc">
-                        开启后将在首页常驻显示示例家谱按钮；关闭后可从首页隐藏（最近打开记录不受影响）。
+                        开启后将在首页常驻显示示例家谱按钮，但按过一次后依然会隐藏，需要在此重新激活。
                       </span>
                     </div>
                     <label className="ios-switch" title="控制首页是否显示示例家谱入口">
@@ -956,6 +976,8 @@ export default function SettingsPage() {
                           type="text"
                           className="form-input"
                           value={sync.server}
+                          autoComplete="off"
+                          spellCheck={false}
                           placeholder="https://dav.jianguoyun.com/dav/"
                           onChange={(e) => patchSync({ server: e.target.value })}
                         />
@@ -969,6 +991,8 @@ export default function SettingsPage() {
                             type="text"
                             className="form-input"
                             value={sync.username}
+                            autoComplete="off"
+                            spellCheck={false}
                             placeholder="登录邮箱 / 用户名"
                             onChange={(e) => patchSync({ username: e.target.value })}
                           />
@@ -980,6 +1004,8 @@ export default function SettingsPage() {
                             type="password"
                             className="form-input"
                             value={sync.password}
+                            autoComplete="new-password"
+                            spellCheck={false}
                             placeholder="WebDAV 应用密码"
                             onChange={(e) => patchSync({ password: e.target.value })}
                           />
@@ -994,6 +1020,8 @@ export default function SettingsPage() {
                             type="text"
                             className="form-input"
                             value={sync.remoteRoot}
+                            autoComplete="off"
+                            spellCheck={false}
                             placeholder="yiranji"
                             onChange={(e) => patchSync({ remoteRoot: e.target.value })}
                           />
@@ -1200,6 +1228,8 @@ export default function SettingsPage() {
                             type="password"
                             className="form-input"
                             value={newPassword}
+                            autoComplete="new-password"
+                            spellCheck={false}
                             onChange={(e) => setNewPassword(e.target.value)}
                             placeholder={project.meta.hasPassword ? '请输入新密码' : '请输入密码'}
                           />
@@ -1211,6 +1241,8 @@ export default function SettingsPage() {
                             type="password"
                             className="form-input"
                             value={confirmPassword}
+                            autoComplete="new-password"
+                            spellCheck={false}
                             onChange={(e) => setConfirmPassword(e.target.value)}
                             placeholder="请再次输入新密码"
                           />
@@ -1295,7 +1327,7 @@ export default function SettingsPage() {
                 {message.text}
               </div>
             )}
-          </form>
+          </div>
         </div>
       </div>
 

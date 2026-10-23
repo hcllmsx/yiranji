@@ -110,6 +110,17 @@ html {
   font-size: 16px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* 预留滚动条槽位，彻底消除长短页面切换及展开折叠时的左右跳动 */
+  scrollbar-gutter: stable;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.25s ease;
+}
+
+html.is-scrolling,
+html.near-scrollbar {
+  scrollbar-color: oklch(25% 0.02 60 / 0.25) transparent;
 }
 
 body {
@@ -552,10 +563,10 @@ a:hover {
   font-size: var(--text-xs);
 }
 
-/* ==================== 滚动条 ==================== */
+/* ==================== 滚动条（遵循自隐与槽位预留规范） ==================== */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -563,12 +574,18 @@ a:hover {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: oklch(80% 0.01 65);
-  border-radius: var(--radius-full);
+  background-color: transparent;
+  border-radius: 9999px;
+  transition: background-color 0.25s ease;
+}
+
+html.is-scrolling::-webkit-scrollbar-thumb,
+html.near-scrollbar::-webkit-scrollbar-thumb {
+  background-color: oklch(25% 0.02 60 / 0.22);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: oklch(70% 0.01 65);
+  background-color: oklch(25% 0.02 60 / 0.45) !important;
 }
 
 /* ==================== 动画 ==================== */
