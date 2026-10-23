@@ -71,6 +71,20 @@
   flex-shrink: 0;
 }
 
+.btn-coordinates-active {
+  background-color: var(--color-accent) !important;
+  border-color: var(--color-accent) !important;
+  color: var(--color-text-inverse) !important;
+  box-shadow: 0 0 8px oklch(60% 0.16 250 / 0.25);
+}
+
+.btn-coordinates-active:hover {
+  background-color: var(--color-accent-dark) !important;
+  border-color: var(--color-accent-dark) !important;
+  color: var(--color-text-inverse) !important;
+  transform: translateY(-1px);
+}
+
 .tree-container {
   flex: 1;
   background-color: var(--color-bg);

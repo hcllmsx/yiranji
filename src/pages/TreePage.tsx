@@ -2799,24 +2799,11 @@ function TreePageContent() {
             )}
           </div>
           <button
-            className="btn btn-sm btn-secondary"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '94px',
-              fontWeight: 500,
-              boxSizing: 'border-box',
-              border: '1.5px solid',
-              borderColor: showCoordinates ? 'var(--color-accent)' : 'var(--color-border)',
-              backgroundColor: showCoordinates ? 'var(--color-accent)' : 'transparent',
-              color: showCoordinates ? 'var(--color-text-inverse)' : 'var(--color-text-primary)',
-              boxShadow: showCoordinates ? '0 0 8px oklch(60% 0.16 250 / 0.25)' : 'none',
-              transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease'
-            }}
+            className={`btn btn-sm btn-secondary ${showCoordinates ? 'btn-coordinates-active' : ''}`}
             onClick={() => setShowCoordinates(!showCoordinates)}
+            title={showCoordinates ? '点击隐藏坐标系' : '点击显示坐标系'}
           >
-            {showCoordinates ? '隐藏坐标系' : '显示坐标系'}
+            坐标系
           </button>
         </div>
       </div>
