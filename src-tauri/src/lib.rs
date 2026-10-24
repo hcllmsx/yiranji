@@ -534,6 +534,39 @@ fn delete_media_file(workspace_path: String, media_path: String) -> Result<(), S
     Ok(())
 }
 
+/// 从磁盘永久删除家谱工作区目录或 .yrj 文件
+#[tauri::command]
+fn delete_project_workspace_from_disk(path: String) -> Result<(), String> {
+    let p = PathBuf::from(&path);
+    if !p.exists() {
+        // 若在外部已被删除，直接返回成功，方便前端清理历史记录
+        return Ok(());
+    }
+
+    // 安全检查：禁止删除根路径或系统关键目录
+    if let Some(parent) = p.parent() {
+        if parent.as_os_str().is_empty() && p.is_dir() {
+            return Err("安全限制：禁止删除磁盘根目录".to_string());
+        }
+    } else {
+        return Err("安全限制：无效路径".to_string());
+    }
+
+    let norm_path = path.replace('\\', "/");
+    let trimmed = norm_path.trim_end_matches('/');
+    if trimmed.len() <= 3 && trimmed.ends_with(':') {
+        return Err("安全限制：禁止删除磁盘驱动器".to_string());
+    }
+
+    if p.is_dir() {
+        fs::remove_dir_all(&p).map_err(|e| format!("从磁盘删除家谱文件夹失败: {}", e))?;
+    } else if p.is_file() {
+        fs::remove_file(&p).map_err(|e| format!("从磁盘删除文件失败: {}", e))?;
+    }
+
+    Ok(())
+}
+
 /// 批量检查媒体文件是否存在（用于旧数据迁移时判断头像原图文件是否还在）
 #[tauri::command]
 fn check_media_files_exist(paths: Vec<String>) -> Vec<bool> {
@@ -751,7 +784,7 @@ pub fn run() {
             settings::save_app_settings,
             settings::get_settings_file_path,
             get_workspace_stats,
-            get_workspace_stats
+            delete_project_workspace_from_disk
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

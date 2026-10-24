@@ -227,6 +227,57 @@
   border-color: var(--color-accent-light);
 }
 
+.welcome-recent-actions {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+  transition: all var(--transition-fast) ease;
+}
+
+.welcome-recent-item-container:hover .welcome-recent-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.welcome-recent-action-btn {
+  background: none;
+  border: none;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast) ease;
+  opacity: 0.65;
+  padding: 0;
+}
+
+.welcome-recent-action-btn:hover {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+.welcome-recent-remove-btn:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-hover, rgba(0, 0, 0, 0.06));
+}
+
+.welcome-recent-disk-delete-btn:hover {
+  color: #ff3b30 !important;
+  background-color: rgba(255, 59, 48, 0.12);
+}
+
 .welcome-recent-delete-btn {
   opacity: 0;
   pointer-events: none;
@@ -241,7 +292,7 @@
 .welcome-recent-delete-btn:hover {
   opacity: 1 !important;
   transform: scale(1.2);
-  color: #ff3b30 !important; /* 精美的系统红色 */
+  color: #ff3b30 !important;
 }
 
 /* 版本信息 */

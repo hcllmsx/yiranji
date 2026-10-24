@@ -530,3 +530,11 @@ export async function getWorkspaceStats(workspacePath: string): Promise<FolderSt
     return { totalBytes: 0, fileCount: 0, dirCount: 0 };
   }
 }
+/**
+ * 从磁盘永久删除家谱工作区文件夹或 .yrj 文件
+ */
+export async function deleteProjectWorkspaceFromDisk(path: string): Promise<void> {
+  const api = await getTauriApi();
+  if (!api) throw new Error('未运行在 Tauri 环境中');
+  return api.invoke<void>('delete_project_workspace_from_disk', { path });
+}
