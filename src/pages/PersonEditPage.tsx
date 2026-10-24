@@ -15,6 +15,14 @@ import {
 } from '../utils';
 import { Lunar } from 'lunar-javascript';
 import { isTauri, convertLocalSrc, canDisplaySrc, saveMediaFile, deleteMediaFile } from '../utils/tauri';
+import {
+  AVATAR_DEFAULT_EXT,
+  avatarRelPath,
+  dataUrlExt,
+  mediaAbsPath,
+  newMediaId,
+  photoRelPath,
+} from '../utils/mediaPaths';
 import AvatarCropModal from '../components/AvatarCropModal';
 import type { Person, Photo, Gender, LunarDate, SpouseRelationType, SpouseOrderType, ChildRelationType, Relations, AdoptiveParentGroup } from '../types';
 import {
@@ -750,13 +758,8 @@ export default function PersonEditPage() {
       const otherSource = mode === 'circle' ? avatarRectSource : avatarSource;
       const rawSource = selfImage || otherImage!;
 
-      if (ownSource || otherSource) {
-        setCropModalImage(toModalSrc((ownSource || otherSource)!));
-      } else if (rawSource.startsWith('data:')) {
-        setCropModalImage(rawSource);
-      } else {
-        setCropModalImage(convertLocalSrc(getOriginalImageSrc(rawSource)));
-      }
+      // 有原图就用原图，没有（历史数据）才退回用已裁剪的图
+      setCropModalImage(toModalSrc((ownSource || otherSource || rawSource)!));
     } else {
       // 一张照片都还没有，正常触发系统文件选择框
       const inputId = mode === 'circle' ? 'avatar-circle-upload' : 'avatar-rect-upload';
@@ -827,21 +830,12 @@ export default function PersonEditPage() {
   const toModalSrc = (source: string): string =>
     source.startsWith('data:') ? source : convertLocalSrc(source);
 
-  // 智能转换：若已存路径指向 cropped 裁剪图，则在重新裁剪时尝试拉取同一目录下的 original 原图以防止画质受损
-  const getOriginalImageSrc = (croppedPath: string | undefined): string => {
-    if (!croppedPath) return '';
-    if (croppedPath.includes('cropped.')) {
-      return croppedPath.replace(/cropped\.(jpg|png|jpeg|webp)/i, 'original.$1');
-    }
-    return croppedPath;
-  };
-
   // 重新裁剪圆形头像
   const handleRecropAvatar = () => {
     const source = avatarSource || avatar;
     if (!source) return;
     setCropMode('circle');
-    setCropModalImage(avatarSource ? toModalSrc(avatarSource) : convertLocalSrc(getOriginalImageSrc(avatar)));
+    setCropModalImage(toModalSrc(source));
   };
 
   // 重新裁剪方形形象照
@@ -849,7 +843,7 @@ export default function PersonEditPage() {
     const source = avatarRectSource || avatarRect;
     if (!source) return;
     setCropMode('rect');
-    setCropModalImage(avatarRectSource ? toModalSrc(avatarRectSource) : convertLocalSrc(getOriginalImageSrc(avatarRect)));
+    setCropModalImage(toModalSrc(source));
   };
 
   // 保存数据
@@ -885,23 +879,10 @@ export default function PersonEditPage() {
     const workspacePath = useFamilyStore.getState().currentFilePath;
     if (isTauri() && newAvatarBase64 && workspacePath) {
       try {
-        let ext = 'jpg';
-        const match = newAvatarBase64.match(/data:image\/([a-zA-Z+]+);base64/);
-        if (match && match[1]) {
-          ext = match[1] === 'jpeg' ? 'jpg' : match[1];
-        }
-
-        // 以随机 UUID 命名生成独立子目录名
-        const randomId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
-        const dirName = `avatar_${randomId}_circle`;
-        
-        // 头像原图不再放进头像目录，而是登记到资料页照片栏（见下方「头像原图」处理）
-        // 保存裁剪后的图
-        const croppedFilename = `${dirName}/cropped.${ext}`;
-        await saveMediaFile(workspacePath, croppedFilename, newAvatarBase64);
-
-        // 绑定裁剪图物理路径
-        finalAvatar = `${workspacePath}/media/${croppedFilename}`;
+        const ext = dataUrlExt(newAvatarBase64, AVATAR_DEFAULT_EXT.circle);
+        const relPath = avatarRelPath('circle', newMediaId(), ext);
+        await saveMediaFile(workspacePath, relPath, newAvatarBase64);
+        finalAvatar = mediaAbsPath(workspacePath, relPath);
       } catch (err) {
         console.error('物理写入头像文件失败:', err);
       }
@@ -910,20 +891,10 @@ export default function PersonEditPage() {
     // 同时保存矩形原图到工作区
     if (isTauri() && newAvatarRectBase64 && workspacePath) {
       try {
-        let ext = 'jpg';
-        const match = newAvatarRectBase64.match(/data:image\/([a-zA-Z+]+);base64/);
-        if (match && match[1]) {
-          ext = match[1] === 'jpeg' ? 'jpg' : match[1];
-        }
-
-        const randomId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
-        const dirName = `avatar_${randomId}_rect`;
-
-        // 保存裁剪后的形象大图
-        const croppedFilename = `${dirName}/cropped.${ext}`;
-        await saveMediaFile(workspacePath, croppedFilename, newAvatarRectBase64);
-
-        finalAvatarRect = `${workspacePath}/media/${croppedFilename}`;
+        const ext = dataUrlExt(newAvatarRectBase64, AVATAR_DEFAULT_EXT.rect);
+        const relPath = avatarRelPath('rect', newMediaId(), ext);
+        await saveMediaFile(workspacePath, relPath, newAvatarRectBase64);
+        finalAvatarRect = mediaAbsPath(workspacePath, relPath);
       } catch (err) {
         console.error('物理写入矩形头像文件失败:', err);
       }
@@ -951,12 +922,9 @@ export default function PersonEditPage() {
       if (existed) return existed;
       let path = source;
       if (isTauri() && workspacePath) {
-        const match = source.match(/^data:image\/([a-zA-Z0-9+.-]+);base64/);
-        const ext = match ? (match[1] === 'jpeg' ? 'jpg' : match[1].replace(/[^a-z0-9]/gi, '').toLowerCase()) : 'jpg';
-        const randomId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
-        const filename = `photo_${randomId}.${ext}`;
-        await saveMediaFile(workspacePath, filename, source);
-        path = `${workspacePath}/media/${filename}`;
+        const relPath = photoRelPath(newMediaId(), dataUrlExt(source));
+        await saveMediaFile(workspacePath, relPath, source);
+        path = mediaAbsPath(workspacePath, relPath);
       }
       const photo: Photo = {
         id: uuidv4(),
@@ -2890,8 +2858,8 @@ export default function PersonEditPage() {
           initTab={cropMode}
           syncSourceImage={
             cropMode === 'circle'
-              ? (avatarRectSource || getOriginalImageSrc(avatarRect))
-              : (avatarSource || getOriginalImageSrc(avatar))
+              ? (avatarRectSource || avatarRect)
+              : (avatarSource || avatar)
           }
         />
       )}

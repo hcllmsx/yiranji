@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import WelcomePage from './pages/WelcomePage';
 import MainLayout from './components/MainLayout';
 import UpdateDialog from './components/UpdateDialog';
+import MajorUpdateNotice from './components/MajorUpdateNotice';
 import { checkForUpdate } from './utils/updateChecker';
 import { useUpdateStore } from './store/updateStore';
 import { initAppSettings } from './utils/appSettings';
@@ -55,6 +56,7 @@ function App() {
   return (
     <BrowserRouter>
       <UpdateDialog />
+      <MajorUpdateNotice />
       <Routes>
         <Route path="/" element={<WelcomePage />} />
         <Route element={<MainLayout />}>

@@ -3,11 +3,24 @@
 // ==================== 数据版本 ====================
 
 /**
- * 家谱数据结构版本（schema version，不是软件版本）。
- * 旧档案打开时会按这个版本号自动升级并清理不合规关系，
+ * 家谱档案格式版本（schema version，不是软件版本）。
+ *
+ * 这是软件内置的常量，用户不可设定：新建家谱一律写入此版本
+ * （见 createDefaultMeta），旧档案打开时由 migrateProjectData 升级到此版本。
  * 设置页「基本信息」里展示给用户看的就是它。
+ *
+ * 版本号管的是「档案格式」这份契约，包含三件事，任一发生不兼容变更都必须升位：
+ *   1. project.json 的字段结构（增删字段、改字段含义）；
+ *   2. 工作区 media 目录布局（见 utils/mediaPaths.ts）；
+ *   3. 关系数据的合法性强约束（见 utils/relationRules.ts）。
+ *
+ * 升位规则：不兼容变更升次版本号（2.1.0 → 2.2.0）；只加可选字段、不影响旧档读取升修订号。
+ *
+ * 变更履历：
+ *   2.1.0 关系数据强约束（自指 / 成环 / 角色互斥 / 年龄倒挂）与养父母分组结构；
+ *   2.2.0 工作区媒体按类型分目录：media/photo、media/avatar/{circle,rect}、media/video、media/audio。
  */
-export const CURRENT_DATA_VERSION = '2.1.0';
+export const CURRENT_DATA_VERSION = '2.2.0';
 
 // ==================== 基础类型 ====================
 

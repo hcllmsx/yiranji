@@ -1,10 +1,10 @@
 [package]
 name = "app"
 version = "26.10.24"
-description = "A Tauri App"
-authors = ["you"]
-license = ""
-repository = ""
+description = "以苒纪 — 一款现代化的家谱管理桌面应用"
+authors = ["莫莫先生"]
+license = "GPL-3.0-only"
+repository = "https://github.com/hcllmsx/yiranji"
 edition = "2021"
 rust-version = "1.77.2"
 

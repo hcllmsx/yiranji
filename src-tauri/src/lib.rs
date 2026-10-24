@@ -517,20 +517,6 @@ fn delete_media_file(workspace_path: String, media_path: String) -> Result<(), S
     fs::remove_file(&file_path)
         .map_err(|e| format!("删除媒体文件失败: {}", e))?;
 
-    // 智能清理：以 "avatar_" 开头的专属头像子目录，在其中文件被删光后顺带移除空目录。
-    // 目录里可能还留有「头像原图」（登记在照片栏中），所以不能整目录删除。
-    if let Some(parent) = file_path.parent() {
-        if let Some(dir_name) = parent.file_name().and_then(|n| n.to_str()) {
-            if dir_name.starts_with("avatar_") {
-                let is_empty = fs::read_dir(parent)
-                    .map(|mut it| it.next().is_none())
-                    .unwrap_or(false);
-                if is_empty {
-                    let _ = fs::remove_dir(parent);
-                }
-            }
-        }
-    }
     Ok(())
 }
 
@@ -565,12 +551,6 @@ fn delete_project_workspace_from_disk(path: String) -> Result<(), String> {
     }
 
     Ok(())
-}
-
-/// 批量检查媒体文件是否存在（用于旧数据迁移时判断头像原图文件是否还在）
-#[tauri::command]
-fn check_media_files_exist(paths: Vec<String>) -> Vec<bool> {
-    paths.iter().map(|p| PathBuf::from(p).is_file()).collect()
 }
 
 #[tauri::command]
@@ -762,7 +742,6 @@ pub fn run() {
             create_project_workspace,
             create_unique_project_workspace,
             install_sample_workspace,
-            check_media_files_exist,
             resolve_workspace_dir,
             save_project_json,
             backup_project_json,

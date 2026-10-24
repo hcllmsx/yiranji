@@ -17,7 +17,7 @@ const REMOTE_VERSION_SOURCES = [
 export const RELEASES_URL = 'https://github.com/hcllmsx/yiranji/releases/latest';
 
 /** 单个源的超时时间（毫秒） */
-const SOURCE_TIMEOUT_MS = 8000;
+const SOURCE_TIMEOUT_MS = 6000;
 
 export type UpdateStatus = 'update-available' | 'up-to-date' | 'failed';
 

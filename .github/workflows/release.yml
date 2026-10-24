@@ -1,3 +1,13 @@
+# ============================================================
+# 网盘分发 / 二维码引导发布工作流（免打包纯公告模式）
+#
+# 以苒纪的安装包通过百度网盘 / 夸克网盘分发，不在 GitHub Release 挂载二进制文件。
+# 本工作流只做一件事：打 tag 后自动生成 Release 公告，正文 = CHANGELOG 里对应
+# 版本的更新内容 + 网盘下载二维码引导，全程无需编译打包，秒级完成。
+#
+# 发版流程：改 VERSION -> 运行 npm run sync-version 同步各配置文件 -> 补 CHANGELOG
+#           -> 提交 -> 打 tag（v<VERSION>）-> push tag
+# ============================================================
 name: Release
 
 on:
@@ -5,51 +15,101 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   release:
-    permissions:
-      contents: write
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout Source Code
+        uses: actions/checkout@v7
 
-      - name: Setup Node
-        uses: actions/setup-node@v5
-        with:
-          node-version: 22
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Generate Cargo.lock
-        run: |
-          cd src-tauri
-          cargo generate-lockfile
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './src-tauri -> target'
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Build Tauri app
-        run: npm run tauri build
-
-      - name: Rename bundle to ASCII filename
+      - name: Build Announcement
+        id: build_notes
         shell: pwsh
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          REPO_NAME: ${{ github.repository }}
         run: |
-          $bundleDir = "src-tauri/target/release/bundle/nsis"
-          $files = Get-ChildItem -Path $bundleDir -Filter "*-setup.exe"
-          foreach ($f in $files) {
-            $newName = "yiranji_${{ github.ref_name }}_x64-setup.exe"
-            Rename-Item -Path $f.FullName -NewName $newName
-            Write-Host "Renamed: $($f.Name) -> $newName"
+          # 1. 读取 VERSION，并校验与 tag 严格一致，避免发出与代码版本对不上的公告
+          if (-not (Test-Path "VERSION")) {
+            throw "Error: VERSION file not found in repository root."
+          }
+          $ver = (Get-Content -Raw -Encoding UTF8 "VERSION").Trim()
+          if ($env:REF_NAME -ne "v$ver") {
+            throw "Error: tag '$($env:REF_NAME)' does not match VERSION 'v$ver'. Bump VERSION before tagging."
+          }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$ver"
+
+          # 2. 校验各配置文件版本已同步：改完 VERSION 必须运行 npm run sync-version
+          #    （或通过开发菜单 [1]/[8] 触发），否则打 tag 后发布的是旧版本号
+          function Assert-SyncedVersion([string]$name, [string]$actual) {
+            if ($actual -ne $ver) {
+              throw "Error: $name version '$actual' does not match VERSION '$ver'. Run 'npm run sync-version' before committing."
+            }
+          }
+          # 用 -AsHashtable 解析：package-lock.json 中存在仅大小写不同的键，普通解析会报错
+          $pkg = Get-Content -Raw -Encoding UTF8 "package.json" | ConvertFrom-Json -AsHashtable
+          Assert-SyncedVersion "package.json" $pkg['version']
+          $lock = Get-Content -Raw -Encoding UTF8 "package-lock.json" | ConvertFrom-Json -AsHashtable
+          Assert-SyncedVersion "package-lock.json" $lock['version']
+          if ($lock.ContainsKey('packages') -and $lock['packages'].ContainsKey('')) {
+            Assert-SyncedVersion "package-lock.json (packages[''])" $lock['packages']['']['version']
+          }
+          $tauriConf = Get-Content -Raw -Encoding UTF8 "src-tauri/tauri.conf.json" | ConvertFrom-Json -AsHashtable
+          Assert-SyncedVersion "src-tauri/tauri.conf.json" $tauriConf['version']
+          $cargoToml = Get-Content -Raw -Encoding UTF8 "src-tauri/Cargo.toml"
+          $cargoVersion = [regex]::Match($cargoToml, '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
+          Assert-SyncedVersion "src-tauri/Cargo.toml" $cargoVersion
+
+          # 3. 从 CHANGELOG.md 提取当前版本的更新说明（形如 ## v26.10.24）
+          $notes = "Release v$ver"
+          if (Test-Path "CHANGELOG.md") {
+            $changelog = Get-Content -Raw -Encoding UTF8 "CHANGELOG.md"
+            $esc = [regex]::Escape($ver)
+            $pattern = '(?ms)^##\s+\[?v?' + $esc + '\]?.*?\r?\n(.*?)(?=^##\s+|\Z)'
+            if ($changelog -match $pattern) {
+              $extracted = $matches[1].Trim()
+              if ($extracted) { $notes = $extracted }
+            }
           }
 
-      - name: Create release and upload
+          # 4. 拼接更新内容 + 网盘二维码引导
+          # Release 正文不支持本地相对路径，二维码必须用完整的绝对外链 URL（GitHub raw 地址）
+          $repo = $env:REPO_NAME
+          $qrBase = "https://raw.githubusercontent.com/$repo/main/docs"
+          # 注意：PowerShell here-string 结束符顶格会破坏 YAML 缩进，故用数组拼接
+          $bodyLines = @(
+            '### 更新内容',
+            '',
+            $notes,
+            '',
+            '---',
+            '',
+            '### 下载方式请扫描以下二维码',
+            '',
+            '> 抱歉以网盘形式发布，希望这是暂时的。转存至网盘能为我带来一点微薄收益以维持项目更新，感谢理解。指着这个吃饭是不够的，但每周能买一包泡面是可以的。万一如果有多的，那都用来充 TOKEN 啦。',
+            '',
+            '<p align="center">',
+            "  <img src=`"$qrBase/quark-yiranji.jpeg`" width=`"200`" alt=`"夸克网盘下载二维码`" />",
+            '  &nbsp;&nbsp;&nbsp;&nbsp;',
+            "  <img src=`"$qrBase/baidu-yiranji.jpeg`" width=`"200`" alt=`"百度网盘下载二维码`" />",
+            '</p>'
+          )
+          $finalNotes = $bodyLines -join [Environment]::NewLine
+          # 显式使用无 BOM 的 UTF-8，避免正文首行出现 BOM 字符
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::WriteAllText((Join-Path $PWD "release_notes.txt"), $finalNotes, $utf8NoBom)
+
+      - name: Create GitHub Release (Announcement Only)
         uses: softprops/action-gh-release@v3
         with:
-          name: '以苒纪 ${{ github.ref_name }}'
-          files: src-tauri/target/release/bundle/nsis/yiranji_${{ github.ref_name }}_x64-setup.exe
+          tag_name: ${{ github.ref_name }}
+          # 大标题规范：<项目名称> v<版本号>，不带 owner/ 前缀
+          name: '以苒纪 v${{ steps.build_notes.outputs.version }}'
+          body_path: release_notes.txt
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+          # 纯公告模式：不上传任何文件

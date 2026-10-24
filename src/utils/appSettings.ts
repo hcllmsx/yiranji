@@ -10,6 +10,8 @@ export interface AppPrefs {
   treeLayoutMode?: TreeLayoutMode;
   /** 已点击体验过示例家谱的软件版本号 */
   sampleDismissedVersion?: string;
+  /** 重大更新提示已读：本次大改版启动后只提示一次，读过就不再弹 */
+  majorUpdateNoticeDismissed?: boolean;
 }
 
 export interface SyncSettings {

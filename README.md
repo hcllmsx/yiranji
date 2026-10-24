@@ -4,131 +4,51 @@
 
 "以苒纪"取自"光阴在苒，世家成纪"——以苒（时光流转）为纪，记录家族世代的延续与传承。
 
-这是一款现代化的家谱管理桌面应用，基于 Tauri v2 + React 构建，支持人员档案管理、家族树可视化、农历转换等功能。
+这是一款现代化的家谱管理桌面应用，基于 Tauri v2 + React 构建，支持人员档案管理、家族树可视化、农历转换等功能。数据保存在本地，并可通过 WebDAV 在多设备间同步家谱。
 
 ## 预览
 
 ### 首页
 
-![首页](./docs/home.webp)
+![首页](./docs/home.jpg)
 
 ### 家族树
 
-![家族树](./docs/tree.webp)
+![家族树](./docs/tree.jpg)
+
+### 个人信息
+
+![个人信息](./docs/personnel-information.jpg)
+
+## 下载与安装
+
+前往 [Releases](https://github.com/hcllmsx/yiranji/releases/latest) 页面获取最新版本。安装包通过百度网盘 / 夸克网盘分发，发布页内附有下载二维码，扫码转存后下载 `以苒纪_v<版本>_x64-setup.exe` 直接运行安装即可（当前仅提供 Windows 版）。
+
+## 使用方法
+
+1. 启动后在欢迎页**新建家谱工程**，或点击**体验示例**直接打开内置的示例家谱；
+2. 在**人员**页录入家族成员档案（头像、生卒日期、出生地、农历等），在**家族树**页查看并调整世系与亲属关系；
+3. 家谱工程以文件夹形式保存在本地磁盘，可在**设置**页的**多设备同步**中填写 WebDAV 地址（如 Nextcloud、坚果云、自建服务），实现多设备备份与恢复。
 
 ## 功能特性
 
-- **人员档案** — 管理家族成员信息，支持头像、生卒日期、出生地、生肖、农历等
-- **家族树** — 可视化展示家族关系，支持缩放、拖拽、节点交互
-- **农历支持** — 基于 `lunar-javascript` 库，自动计算农历日期与生肖
-- **行政区划联动** — 内置全国省/市/县/乡镇四级数据，出生地选择更便捷
-- **本地存储** — 数据存储在本地，无需联网
+- **人员档案** — 支持头像、生卒日期、出生地、生肖、农历等信息管理
+- **家族树** — 可视化展示家族关系，支持经典树状与同辈齐平双布局、缩放、拖拽与节点交互
+- **农历支持** — 自动计算农历日期与生肖
+- **行政区划联动** — 内置全国省/市/县/乡镇四级数据
+- **多设备同步** — 基于 WebDAV 的云端备份与恢复，可一键关闭
+- **本地存储** — 数据加密保存在本地，纯单机模式下不产生任何网络请求
 
-## 项目结构
-
-```
-yiranji/
-├── src-tauri/          # Tauri / Rust 后端
-│   └── icons/          # 应用图标
-├── src/
-│   ├── components/     # 公共组件
-│   ├── pages/          # 页面组件
-│   ├── store/          # Zustand 状态管理
-│   ├── utils/          # 工具函数
-│   └── index.css       # 全局样式 & 设计系统
-├── public/fonts/       # 本地字体文件
-├── scripts/            # 构建辅助脚本
-├── VERSION             # 版本号文件（单一修改入口）
-└── tauri.conf.json     # Tauri 配置
-```
-
-## 开发环境要求
-
-- **Node.js** >= 18
-- **Rust** >= 1.77（用于 Tauri 编译）
-- **npm** 或其他包管理器
-
-> 如果不打算打包发布，可以跳过 Rust 环境，仅运行前端开发服务器。
-
-## 快速开始
-
-```bash
-# 安装依赖
-npm install
-
-# 启动开发模式
-npm run tauri dev
-
-# 打包构建
-npm run tauri build
-```
-
-### 仅前端开发（无需 Rust）
-
-```bash
-# 只启动 Vite 前端开发服务器
-npm run dev
-```
-
-## 版本号管理
-
-版本号统一在根目录的 [`VERSION`](./VERSION) 文件中维护。
-
-当你在本地修改了 `VERSION` 文件后，在推送到 GitHub 之前，必须在本地运行以下命令，将最新版本号同步至所有相关配置文件中：
-
-```bash
-npm run sync-version
-```
-
-该同步脚本会自动改写以下文件的版本号：
-
-- `package.json` 和 `package-lock.json`
-- `src-tauri/tauri.conf.json`
-- `src-tauri/Cargo.toml` 和 `src-tauri/Cargo.lock`
-- `src-tauri/nsis-hooks.nsh` 中的安装引导标题
-
-*注：在本地运行 `npm run tauri build` 时也会自动运行此同步。*
-
-> 版本号必须符合 semver 格式（如 `26.7.2`，不要写成 `2026.07.02`），前面不要使用0，最大不能超过255。
-
-## 构建产物
-
-打包后的安装包位于 `src-tauri/target/release/bundle/nsis/` 目录下。
-
-### 清除构建缓存
-
-#### 1. 清除 Rust 后端编译缓存（最常用）
-清除 `src-tauri` 目录下的 Rust 编译缓存，可以使用以下命令：
-
-在 `src-tauri` 目录下执行：
-```bash
-cargo clean
-```
-或者在项目根目录下直接执行：
-```bash
-cargo clean --manifest-path src-tauri/Cargo.toml
-```
-这会删除 `src-tauri/target` 目录下的所有构建产物和临时缓存，下次运行 `tauri dev` 或 `build` 时会进行完整的重新编译。
-
----
-
-### 2. 清除前端 Vite 预编译缓存
-如果您需要清除前端的构建缓存，可以手动删除项目根目录下的缓存文件夹：
-```bash
-# Windows cmd
-rmdir /s /q node_modules\.vite
-
-# PowerShell
-Remove-Item -Recurse -Force node_modules/.vite
-```
-
-## 鸣谢
+## 致谢
 
 - **行政区划数据** — 来自 [xiangyuecn/AreaCity-JsSpider-StatsGov](https://github.com/xiangyuecn/AreaCity-JsSpider-StatsGov)，包含省/市/县/乡镇四级数据
 - **农历转换** — [lunar-javascript](https://github.com/6tail/lunar-javascript)
 - **字体** — [霞鹜文楷](https://github.com/lxgw/LxgwWenKai) · [阿里巴巴普惠体](https://fonts.alibabagroup.com/)
-- **图片压缩** — 导出图片（JPG/PNG）的编解码基于 Google [Squoosh](https://github.com/GoogleChromeLabs/squoosh) 项目的 WASM 编解码器（经 [jSquash](https://github.com/jamsinclair/jSquash) 封装），底层使用 [MozJPEG](https://github.com/mozilla/mozjpeg)（JPEG 压缩）与 [Oxipng](https://github.com/oxipng/oxipng)（PNG 无损优化）
+- **图片压缩** — 导出图片（JPG/PNG）的编解码基于 Google [Squoosh](https://github.com/GoogleChromeLabs/squoosh) 项目的 WASM 编解码器（经 [jSquash](https://github.com/jamsinclair/jSquash) 封装），底层使用 [MozJPEG](https://github.com/mozilla/mozjpeg) 与 [Oxipng](https://github.com/oxipng/oxipng)
 
-## License
+## 开源许可
 
-[MIT](./LICENSE)
+本项目基于 [GPL-3.0](./LICENSE) 协议开源，版权所有 © 2026 莫莫先生。
+
+- 作者：莫莫先生 · [B站主页](https://space.bilibili.com/255947051)
+- 问题反馈：[意见反馈表](https://docs.qq.com/form/page/DRHJ3bmd6Q3RqaENT)

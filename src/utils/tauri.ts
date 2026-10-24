@@ -112,13 +112,6 @@ export async function createUniqueProjectWorkspace(parentDir: string, baseName: 
   return api.invoke<string>('create_unique_project_workspace', { parentDir, baseName });
 }
 
-/** 批量检查媒体文件是否存在 */
-export async function checkMediaFilesExist(paths: string[]): Promise<boolean[]> {
-  const api = await getTauriApi();
-  if (!api || paths.length === 0) return paths.map(() => false);
-  return api.invoke<boolean[]>('check_media_files_exist', { paths });
-}
-
 /** 释放随安装包发布的示例家谱，返回其工作区路径。若 force 为 true 则强制覆盖 */
 export async function installSampleWorkspace(force = false): Promise<string> {
   const api = await getTauriApi();

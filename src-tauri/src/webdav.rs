@@ -439,7 +439,7 @@ async fn propfind(
 /// 递归列出目录下的所有文件（返回相对该目录的路径）。
 ///
 /// 之所以不用 `Depth: infinity`：坚果云等服务的 PROPFIND 不支持无限深度会直接 403；
-/// 而只用 Depth:1 又会漏掉 `media/avatar_xxx/` 这类子目录里的头像。
+/// 而只用 Depth:1 又会漏掉 `media/avatar/circle/`、`media/photo/` 这类子目录里的媒体。
 /// 这里用 Depth:1 逐层下钻，兼容性最好。
 async fn list_tree(
     client: &reqwest::Client,
@@ -460,7 +460,7 @@ async fn list_tree(
         }
         let dir_path = href_to_path(&dir_url);
         for entry in propfind(client, &dir_url, username, password, "1").await? {
-            // 相对 media 根目录计算，子目录里的文件才能保持 avatar_1/cropped.jpg 这样的完整路径
+            // 相对 media 根目录计算，子目录里的文件才能保持 avatar/circle/xxx_cropped.png 这样的完整路径
             let rel = match rel_path_from(&entry.path, &base_path) {
                 Some(r) => r,
                 None => continue, // 根目录自身
@@ -655,7 +655,7 @@ pub async fn webdav_push(
     let has_filter = !referenced.is_empty();
     let media_url = join_url(&server, &format!("{}/media", dir));
     ensure_dir(&client, &server, &username, &password, &format!("{}/media", dir)).await?;
-    // 递归读取云端媒体：头像等会放在 media/avatar_xxx/ 子目录里，只列一层会漏
+    // 递归读取云端媒体：头像在 media/avatar/{circle,rect}/ 下，只列一层会漏
     let remote_files = list_tree(&client, &media_url, &username, &password, 4).await?;
     // 按「相对路径」判断是否已存在，子目录里的同名文件（cropped.jpg）不会被误判
     let remote_sizes: std::collections::HashMap<String, u64> =
@@ -835,7 +835,7 @@ pub async fn webdav_pull(    server: String,
         collect_media_files(&media_dir).into_iter().map(|(rel, _, _)| rel).collect();
 
     let media_url = join_url(&server, &format!("{}/media", dir));
-    // 递归列出，子目录里的头像也要能拉到（工程引用的是 media/avatar_xxx/cropped.jpg 这类路径）
+    // 递归列出，子目录里的头像也要能拉到（工程引用的是 media/avatar/circle/xxx_cropped.png 这类路径）
     let remote_entries = list_tree(&client, &media_url, &username, &password, 4).await?;
 
     // 只下载工程引用到的文件：云端残留的旧照片不再被拉回本地

@@ -29,7 +29,7 @@ export default function UpdateDialog() {
           <span className="update-version-old">当前 v{__APP_VERSION__}</span>
         </div>
         <p className="update-desc">
-          新版本包含功能改进与问题修复，建议前往 GitHub Releases 页面下载最新版安装包。
+          新版本包含功能改进与问题修复，建议前往 GitHub Releases 页面查看更新说明，并按页面指引下载最新版。
         </p>
         <div className="update-buttons">
           <button type="button" className="btn btn-secondary btn-sm" onClick={closeUpdateDialog}>

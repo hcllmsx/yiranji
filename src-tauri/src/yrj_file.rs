@@ -39,7 +39,7 @@ pub fn zip_workspace(workspace_path: &str) -> Result<Vec<u8>, String> {
             zip.write_all(&json_data).map_err(|e| e.to_string())?;
         }
 
-        // 2. 压入 media 目录下的全部媒体文件（递归，含 avatar_xxx/ 这类子目录）
+        // 2. 压入 media 目录下的全部媒体文件（递归，含 photo/、avatar/ 等分类子目录）
         let media_dir = PathBuf::from(format!("{}/media", workspace_path));
         if media_dir.is_dir() {
             let mut stack = vec![media_dir.clone()];
@@ -54,7 +54,7 @@ pub fn zip_workspace(workspace_path: &str) -> Result<Vec<u8>, String> {
                     if !path.is_file() {
                         continue;
                     }
-                    // 保留相对 media 的目录层级，解包后才能还原 media/avatar_xxx/cropped.jpg
+                    // 保留相对 media 的目录层级，解包后才能还原 media/avatar/circle/xxx_cropped.png
                     let rel = path
                         .strip_prefix(&media_dir)
                         .unwrap_or(&path)
@@ -207,27 +207,30 @@ mod tests {
 
     fn prepare_workspace(tag: &str) -> PathBuf {
         let dir = temp_dir(tag);
-        fs::create_dir_all(dir.join("media").join("avatar_1")).unwrap();
+        fs::create_dir_all(dir.join("media").join("photo")).unwrap();
+        fs::create_dir_all(dir.join("media").join("avatar").join("circle")).unwrap();
         fs::write(dir.join("project.json"), "{\"meta\":{},\"persons\":{}}").unwrap();
-        fs::write(dir.join("media").join("photo_a.jpg"), vec![1u8; 10]).unwrap();
-        fs::write(dir.join("media").join("avatar_1").join("cropped.jpg"), vec![2u8; 20]).unwrap();
-        fs::write(dir.join("media").join("avatar_1").join("original.jpg"), vec![3u8; 30]).unwrap();
+        fs::write(dir.join("media").join("photo").join("a.jpg"), vec![1u8; 10]).unwrap();
+        fs::write(
+            dir.join("media").join("avatar").join("circle").join("a_cropped.png"),
+            vec![2u8; 20],
+        )
+        .unwrap();
         dir
     }
 
     fn assert_restored(dest: &PathBuf) {
         assert!(dest.join("project.json").is_file(), "project.json 应被还原");
-        assert!(dest.join("media").join("photo_a.jpg").is_file(), "顶层照片应被还原");
         assert!(
-            dest.join("media").join("avatar_1").join("cropped.jpg").is_file(),
-            "子目录头像应被还原"
+            dest.join("media").join("photo").join("a.jpg").is_file(),
+            "photo 子目录里的照片应被还原"
         );
         assert!(
-            dest.join("media").join("avatar_1").join("original.jpg").is_file(),
-            "子目录原图应被还原"
+            dest.join("media").join("avatar").join("circle").join("a_cropped.png").is_file(),
+            "avatar 子目录里的头像应被还原"
         );
         assert_eq!(
-            fs::metadata(dest.join("media").join("avatar_1").join("cropped.jpg"))
+            fs::metadata(dest.join("media").join("avatar").join("circle").join("a_cropped.png"))
                 .unwrap()
                 .len(),
             20,
