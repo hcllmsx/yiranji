@@ -55,7 +55,7 @@ export async function selectExportFilePath(
 }
 
 /**
- * 弹出原生打开文件对话框，选择 .yrj 文件
+ * 弹出原生打开文件对话框，选择 .yrp 工程或 .yrj 文件包
  */
 export async function selectFilePathForOpen(): Promise<string | null> {
   const api = await getTauriApi();
@@ -83,7 +83,7 @@ export async function openInExplorer(path: string): Promise<void> {
 }
 
 /**
- * 把整个档案工作区复制到新的父目录下（自动修正 project.json 内的绝对媒体路径），返回新工作区路径
+ * 把整个档案工作区复制到新的父目录下（自动修正 project.yrp 内的绝对媒体路径），返回新工作区路径
  */
 export async function moveProjectWorkspace(fromWorkspace: string, toParentDir: string): Promise<string> {
   const api = await getTauriApi();
@@ -128,32 +128,49 @@ export async function resolveWorkspaceDir(path: string): Promise<string> {
   return api.invoke<string>('resolve_workspace_dir', { path });
 }
 
-/**
- * 将明文项目 JSON 保存至工作区的 project.json
- */
-export async function saveProjectJson(workspacePath: string, jsonContent: string): Promise<void> {
+/** 将工程 JSON 编码为带专用文件头的 project.yrp 并原子保存。 */
+export async function saveProjectFile(workspacePath: string, jsonContent: string): Promise<void> {
   const api = await getTauriApi();
   if (!api) return;
-  return api.invoke<void>('save_project_json', { workspacePath, jsonContent });
+  return api.invoke<void>('save_project_file', { workspacePath, jsonContent });
 }
 
-/**
- * 从工作区加载 project.json 数据
- */
-export async function loadProjectJson(workspacePath: string): Promise<string> {
-  const api = await getTauriApi();
-  if (!api) throw new Error('未运行在 Tauri 环境中');
-  return api.invoke<string>('load_project_json', { workspacePath });
+export interface ProjectLoadResult {
+  json: string;
+  /** 旧版 project.json 自动转换时，原始文件在缓存 backups 目录中的路径。 */
+  formatBackupPath: string | null;
 }
 
-/**
- * 数据迁移前备份：把 project.json 复制为同目录下的 project.bak-{label}.json
- * 返回备份文件的绝对路径
- */
-export async function backupProjectJson(workspacePath: string, label: string): Promise<string> {
+export interface AssociatedFileRequest {
+  id: number;
+  paths: string[];
+}
+
+/** 前端事件监听就绪后，读取冷启动或尚未处理完成的文件打开请求。 */
+export async function takePendingAssociatedFiles(): Promise<AssociatedFileRequest[]> {
+  const api = await getTauriApi();
+  if (!api) return [];
+  return api.invoke<AssociatedFileRequest[]>('take_pending_associated_files');
+}
+
+export async function acknowledgeAssociatedFile(id: number, path: string): Promise<void> {
+  const api = await getTauriApi();
+  if (!api) return;
+  return api.invoke<void>('acknowledge_associated_file', { id, path });
+}
+
+/** 读取 YRP；打开旧版标准 project.json 时由后端自动备份并转换。 */
+export async function loadProjectFile(workspacePath: string): Promise<ProjectLoadResult> {
   const api = await getTauriApi();
   if (!api) throw new Error('未运行在 Tauri 环境中');
-  return api.invoke<string>('backup_project_json', { workspacePath, label });
+  return api.invoke<ProjectLoadResult>('load_project_file', { workspacePath });
+}
+
+/** 数据关系迁移前，在工作区备份当前 project.yrp。 */
+export async function backupProjectFile(workspacePath: string, label: string): Promise<string> {
+  const api = await getTauriApi();
+  if (!api) throw new Error('未运行在 Tauri 环境中');
+  return api.invoke<string>('backup_project_file', { workspacePath, label });
 }
 
 /**
@@ -437,7 +454,7 @@ export async function webdavListProjects(
   });
 }
 
-/** 上传：project.json + 云端缺失的媒体文件 */export async function webdavPush(
+/** 上传：project.yrp + 云端缺失的媒体文件 */export async function webdavPush(
   server: string,
   username: string,
   password: string,
@@ -457,7 +474,7 @@ export async function webdavListProjects(
   });
 }
 
-/** 下载：备份本地 project.json 后覆盖，并补齐缺失媒体 */
+/** 下载：备份本地 project.yrp 后覆盖，并补齐缺失媒体 */
 export async function webdavPull(
   server: string,
   username: string,

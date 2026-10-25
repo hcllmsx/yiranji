@@ -6,7 +6,7 @@
 //
 // 容器结构：
 //   [0..8)    MAGIC  "YIRANJI\0"
-//   [8..12)   version u32 LE（当前为 1）
+//   [8..12)   version u32 LE（当前为 2，包内工程为 project.yrp）
 //   [12]      flags  bit0 = 1 表示 AES-256-GCM 加密
 //   [13..45)  salt（32 字节，未加密时为全 0）
 //   [45..57)  iv（12 字节，未加密时为全 0）
@@ -17,9 +17,10 @@
 import type { FamilyProject } from '../types';
 
 const MAGIC = [0x59, 0x49, 0x52, 0x41, 0x4e, 0x4a, 0x49, 0x00]; // "YIRANJI\0"
-const VERSION = 1;
+const VERSION = 2;
 const PBKDF2_ITERATIONS = 10000;
 const HEADER_SIZE = 57;
+const YRP_MAGIC = [0x59, 0x49, 0x52, 0x41, 0x4e, 0x4a, 0x50, 0x00]; // "YIRANJP\0"
 
 function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
   const out = new Uint8Array(a.length + b.length);
@@ -60,10 +61,20 @@ async function deriveKey(password: string, salt: Uint8Array<ArrayBuffer>): Promi
   );
 }
 
+/** 与 Rust project_file 模块一致：16 字节 YRP 文件头 + UTF-8 JSON。 */
+function encodeYrpProject(project: FamilyProject): Uint8Array {
+  const json = new TextEncoder().encode(JSON.stringify(project, null, 2));
+  const out = new Uint8Array(16 + json.length);
+  out.set(YRP_MAGIC, 0);
+  new DataView(out.buffer).setUint32(8, 1, true);
+  out.set(json, 16);
+  return out;
+}
+
 /**
  * 把工程数据打包成 .yrj 字节流（与桌面版容器格式一致）。
  *
- * 内嵌的 base64 媒体原样保留在 project.json 里：桌面版打开时会把它
+ * 内嵌的 base64 媒体原样保留在 YRP 的 JSON 数据里：桌面版打开时会把它
  * 还原成 media/ 下的实体文件，因此网页版的照片、音频不会丢。
  */
 export async function buildYrjBytes(
@@ -72,7 +83,7 @@ export async function buildYrjBytes(
 ): Promise<Uint8Array> {
   const JSZip = (await import('jszip')).default;
   const zip = new JSZip();
-  zip.file('project.json', JSON.stringify(project, null, 2));
+  zip.file('project.yrp', encodeYrpProject(project));
   const zipBytes = new Uint8Array(
     await zip.generateAsync({
       type: 'uint8array',

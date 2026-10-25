@@ -216,7 +216,7 @@ export default function MainLayout() {
               onClick={() => setShowWebNotice(true)}
               style={{ cursor: 'pointer' }}
               role="button"
-              title="网页版不会修改您电脑上的 project.json（点击查看详细说明）"
+              title="网页版不会修改您电脑上的 project.yrp（点击查看详细说明）"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
@@ -314,7 +314,7 @@ export default function MainLayout() {
             </div>
             <div className="custom-dialog-message" style={{ textAlign: 'left', lineHeight: '1.6', fontSize: '13.5px' }}>
               <p style={{ margin: '0 0 10px 0' }}>
-                1. <strong>无磁盘直接写入权限</strong>：网页版受浏览器安全沙箱限制，<strong>无法直接修改</strong>您电脑磁盘上的 <code>project.json</code> 原始文件。
+                1. <strong>无磁盘直接写入权限</strong>：网页版受浏览器安全沙箱限制，<strong>无法直接修改</strong>您电脑磁盘上的 <code>project.yrp</code> 原始文件。
               </p>
               <p style={{ margin: '0 0 10px 0' }}>
                 2. <strong>实时保存至浏览器缓存</strong>：您的新建、修改、删除等所有操作，均已<strong>实时自动保存到当前浏览器的 localStorage（本地缓存）</strong>中，刷新网页不会丢失。

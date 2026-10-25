@@ -5,6 +5,8 @@ import MainLayout from './components/MainLayout';
 import UpdateDialog from './components/UpdateDialog';
 import WhatsNewDialog from './components/WhatsNewDialog';
 import MajorUpdateNotice from './components/MajorUpdateNotice';
+import AssociatedFileHandler from './components/AssociatedFileHandler';
+import FormatMigrationDialog from './components/FormatMigrationDialog';
 import { checkForUpdate } from './utils/updateChecker';
 import { getStartupReleaseNotes } from './utils/whatsNew';
 import { useUpdateStore } from './store/updateStore';
@@ -70,6 +72,8 @@ function App() {
 
   return (
     <BrowserRouter>
+      <AssociatedFileHandler />
+      <FormatMigrationDialog />
       <UpdateDialog />
       <WhatsNewDialog />
       <MajorUpdateNotice />

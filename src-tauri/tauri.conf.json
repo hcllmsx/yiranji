@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "以苒纪",
-  "version": "26.10.24",
+  "version": "26.10.25",
   "identifier": "com.yiranji.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -42,6 +42,24 @@
     "resources": {
       "resources/sample-family": "sample-family"
     },
+    "fileAssociations": [
+      {
+        "ext": [
+          "yrp"
+        ],
+        "name": "Yiranji.Project",
+        "description": "以苒纪工程文件",
+        "mimeType": "application/vnd.yiranji.project"
+      },
+      {
+        "ext": [
+          "yrj"
+        ],
+        "name": "Yiranji.Package",
+        "description": "以苒纪文件包",
+        "mimeType": "application/vnd.yiranji.package"
+      }
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -1,6 +1,6 @@
 // 以苒纪 — 多设备云同步（WebDAV）
 //
-// 云端只存三样东西：project.json、media/ 下的媒体文件、sync.json（同步元信息）。
+// 云端只存三样东西：project.yrp、media/ 下的媒体文件、sync.json（同步元信息）。
 // 上传时只补齐云端缺失的媒体，所以同一个家谱反复同步几乎不消耗流量。
 
 import type { FamilyProject } from '../types';

@@ -1,7 +1,7 @@
 //! WebDAV 多设备同步
 //!
 //! 云端目录结构：
-//!   <server>/<remote_dir>/project.json   工程数据（明文，媒体以文件名引用）
+//!   <server>/<remote_dir>/project.yrp   工程数据（媒体以文件名引用）
 //!   <server>/<remote_dir>/media/<file>   照片 / 音频 / 视频
 //!   <server>/<remote_dir>/sync.json      同步元信息（revision、更新时间、设备名）
 //!
@@ -12,6 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crate::project_file;
 use serde::{Deserialize, Serialize};
 
 // ==================== 数据结构 ====================
@@ -32,7 +33,7 @@ pub struct RemoteSyncMeta {
     /// 家谱名称，供「从云端恢复」列表展示
     #[serde(default)]
     pub family_name: String,
-    /// 云端 project.json 的字节数，用于快速判断是否变化
+    /// 云端 project.yrp 的字节数，用于快速判断是否变化
     #[serde(default)]
     pub project_size: u64,
 }
@@ -190,10 +191,7 @@ fn now_iso() -> String {
     let rem = secs % 86400;
     let (h, mi, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);
     let (y, m, d) = civil_from_days(days as i64);
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        y, m, d, h, mi, s
-    )
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, m, d, h, mi, s)
 }
 
 /// Howard Hinnant 的 days -> (year, month, day) 算法
@@ -369,11 +367,7 @@ fn parse_multistatus(xml: &str) -> Vec<RawEntry> {
                     if path.ends_with('/') {
                         is_dir = true;
                     }
-                    entries.push(RawEntry {
-                        path,
-                        size,
-                        is_dir,
-                    });
+                    entries.push(RawEntry { path, size, is_dir });
                 }
                 inside = false;
             }
@@ -388,10 +382,7 @@ fn parse_multistatus(xml: &str) -> Vec<RawEntry> {
             }
             (false, "getcontentlength") => {
                 if let Some(end) = xml[close + 1..].find("</") {
-                    size = xml[close + 1..close + 1 + end]
-                        .trim()
-                        .parse()
-                        .unwrap_or(0);
+                    size = xml[close + 1..close + 1 + end].trim().parse().unwrap_or(0);
                 }
             }
             _ => {}
@@ -569,23 +560,41 @@ fn collect_referenced_media(value: &serde_json::Value) -> std::collections::Hash
     set
 }
 
-fn backup_current_project(workspace: &Path) -> String {    let src = workspace.join("project.json");
-    if !src.is_file() {
-        return String::new();
+fn backup_current_project(workspace: &Path) -> Result<String, String> {
+    let sources = [
+        (project_file::PROJECT_FILE_NAME, "yrp"),
+        (project_file::LEGACY_PROJECT_FILE_NAME, "json"),
+    ];
+    if !sources
+        .iter()
+        .any(|(name, _)| workspace.join(name).is_file())
+    {
+        return Ok(String::new());
     }
     let stamp = now_iso()
         .replace([':', '-'], "")
         .replace('T', "-")
         .replace('Z', "");
     let backup_dir = workspace.join(".sync-backup");
-    if fs::create_dir_all(&backup_dir).is_err() {
-        return String::new();
+    fs::create_dir_all(&backup_dir).map_err(|e| format!("创建同步备份目录失败：{}", e))?;
+    let mut primary_backup = String::new();
+    for (name, extension) in sources {
+        let src = workspace.join(name);
+        if !src.is_file() {
+            continue;
+        }
+        let dest = backup_dir.join(format!("project-{}.{}", stamp, extension));
+        fs::copy(&src, &dest).map_err(|e| format!("备份当前工程失败：{}", e))?;
+        let original = fs::read(&src).map_err(|e| format!("回读当前工程失败：{}", e))?;
+        let copied = fs::read(&dest).map_err(|e| format!("回读同步备份失败：{}", e))?;
+        if original != copied {
+            return Err("同步备份校验失败，已中止拉取".to_string());
+        }
+        if primary_backup.is_empty() {
+            primary_backup = dest.to_string_lossy().into_owned();
+        }
     }
-    let dest = backup_dir.join(format!("project-{}.json", stamp));
-    match fs::copy(&src, &dest) {
-        Ok(_) => dest.to_string_lossy().into_owned(),
-        Err(_) => String::new(),
-    }
+    Ok(primary_backup)
 }
 
 // ==================== Tauri 命令 ====================
@@ -621,7 +630,7 @@ pub async fn webdav_remote_meta(
     read_remote_meta(&client, &server, &dir, &username, &password).await
 }
 
-/// 上传：project.json 全量 + 云端缺失的媒体文件
+/// 上传：project.yrp 全量 + 云端缺失的媒体文件
 #[tauri::command]
 pub async fn webdav_push(
     server: String,
@@ -636,9 +645,10 @@ pub async fn webdav_push(
     let client = build_client()?;
     let workspace = PathBuf::from(&workspace_path);
 
-    let project_path = workspace.join("project.json");
-    let project_bytes = fs::read(&project_path)
-        .map_err(|e| format!("读取本地 project.json 失败: {}", e))?;
+    let project_path = workspace.join(project_file::PROJECT_FILE_NAME);
+    let project_bytes =
+        fs::read(&project_path).map_err(|e| format!("读取本地 project.yrp 失败：{}", e))?;
+    let project_content = project_file::read_project(&project_path)?;
 
     ensure_dir(&client, &server, &username, &password, &dir).await?;
 
@@ -650,11 +660,18 @@ pub async fn webdav_push(
     let local_files = collect_media_files(&media_dir);
     // 只同步工程真正引用到的媒体，避免历史遗留的孤儿文件反复占用云端流量
     let project_json: serde_json::Value =
-        serde_json::from_slice(&project_bytes).unwrap_or(serde_json::Value::Null);
+        serde_json::from_str(&project_content).unwrap_or(serde_json::Value::Null);
     let referenced = collect_referenced_media(&project_json);
     let has_filter = !referenced.is_empty();
     let media_url = join_url(&server, &format!("{}/media", dir));
-    ensure_dir(&client, &server, &username, &password, &format!("{}/media", dir)).await?;
+    ensure_dir(
+        &client,
+        &server,
+        &username,
+        &password,
+        &format!("{}/media", dir),
+    )
+    .await?;
     // 递归读取云端媒体：头像在 media/avatar/{circle,rect}/ 下，只列一层会漏
     let remote_files = list_tree(&client, &media_url, &username, &password, 4).await?;
     // 按「相对路径」判断是否已存在，子目录里的同名文件（cropped.jpg）不会被误判
@@ -694,19 +711,15 @@ pub async fn webdav_push(
     }
 
     // 工程数据最后写，保证任何时刻云端都有一份自洽的快照
-    let project_url = join_url(&server, &format!("{}/project.json", dir));
+    let project_url = join_url(&server, &format!("{}/project.yrp", dir));
     let project_size = project_bytes.len() as u64;
     put_bytes(&client, &project_url, &username, &password, project_bytes).await?;
 
-    let project_updated_at = fs::read_to_string(&project_path)
-        .ok()
-        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
-        .and_then(|v| {
-            v.get("meta")
-                .and_then(|m| m.get("updatedAt"))
-                .and_then(|u| u.as_str())
-                .map(|s| s.to_string())
-        })
+    let project_updated_at = project_json
+        .get("meta")
+        .and_then(|m| m.get("updatedAt"))
+        .and_then(|u| u.as_str())
+        .map(|s| s.to_string())
         .unwrap_or_else(now_iso);
 
     let revision = previous.map(|p| p.revision).unwrap_or(0) + 1;
@@ -726,8 +739,8 @@ pub async fn webdav_push(
         project_size,
     };
     let meta_url = join_url(&server, &format!("{}/sync.json", dir));
-    let meta_bytes = serde_json::to_vec_pretty(&meta)
-        .map_err(|e| format!("序列化同步信息失败: {}", e))?;
+    let meta_bytes =
+        serde_json::to_vec_pretty(&meta).map_err(|e| format!("序列化同步信息失败: {}", e))?;
     put_bytes(&client, &meta_url, &username, &password, meta_bytes).await?;
 
     Ok(PushReport {
@@ -805,9 +818,10 @@ pub async fn webdav_list_projects(
     Ok(out)
 }
 
-/// 下载：project.json（先备份本地）+ 本地缺失的媒体文件
+/// 下载：project.yrp（先备份本地）+ 本地缺失的媒体；旧云端 JSON 自动转为 YRP。
 #[tauri::command]
-pub async fn webdav_pull(    server: String,
+pub async fn webdav_pull(
+    server: String,
     username: String,
     password: String,
     remote_dir: String,
@@ -818,29 +832,47 @@ pub async fn webdav_pull(    server: String,
     let client = build_client()?;
     let workspace = PathBuf::from(&workspace_path);
 
-    let project_url = join_url(&server, &format!("{}/project.json", dir));
-    let project_bytes = get_bytes(&client, &project_url, &username, &password)
-        .await?
-        .ok_or_else(|| "云端还没有这个家谱的备份，请先在另一台电脑点「上传到云端」".to_string())?;
+    let project_url = join_url(&server, &format!("{}/project.yrp", dir));
+    let (project_bytes, legacy_json) =
+        match get_bytes(&client, &project_url, &username, &password).await? {
+            Some(bytes) => (bytes, false),
+            None => {
+                let legacy_url = join_url(&server, &format!("{}/project.json", dir));
+                let bytes = get_bytes(&client, &legacy_url, &username, &password)
+                    .await?
+                    .ok_or_else(|| {
+                        "云端还没有这个家谱的备份，请先在另一台电脑点「上传到云端」".to_string()
+                    })?;
+                (bytes, true)
+            }
+        };
 
     let remote = read_remote_meta(&client, &server, &dir, &username, &password)
         .await?
         .unwrap_or_default();
 
-    let backup_path = backup_current_project(&workspace);
+    // 任何本地格式都必须先完成可回读验证的备份，失败时不得继续覆盖。
+    let backup_path = backup_current_project(&workspace)?;
 
     let media_dir = workspace.join("media");
     fs::create_dir_all(&media_dir).map_err(|e| format!("创建 media 目录失败: {}", e))?;
-    let local_existing: std::collections::HashSet<String> =
-        collect_media_files(&media_dir).into_iter().map(|(rel, _, _)| rel).collect();
+    let local_existing: std::collections::HashSet<String> = collect_media_files(&media_dir)
+        .into_iter()
+        .map(|(rel, _, _)| rel)
+        .collect();
 
     let media_url = join_url(&server, &format!("{}/media", dir));
     // 递归列出，子目录里的头像也要能拉到（工程引用的是 media/avatar/circle/xxx_cropped.png 这类路径）
     let remote_entries = list_tree(&client, &media_url, &username, &password, 4).await?;
 
     // 只下载工程引用到的文件：云端残留的旧照片不再被拉回本地
+    let json_bytes = if legacy_json {
+        project_bytes.clone()
+    } else {
+        project_file::decode_yrp(&project_bytes)?.to_vec()
+    };
     let project_json: serde_json::Value =
-        serde_json::from_slice(&project_bytes).unwrap_or(serde_json::Value::Null);
+        serde_json::from_slice(&json_bytes).map_err(|e| format!("云端工程数据无效：{}", e))?;
     let referenced = collect_referenced_media(&project_json);
     let has_filter = !referenced.is_empty();
 
@@ -848,10 +880,7 @@ pub async fn webdav_pull(    server: String,
     let mut skipped = 0usize;
     for entry in &remote_entries {
         let base_name = entry.name.rsplit('/').next().unwrap_or(&entry.name);
-        if has_filter
-            && !referenced.contains(&entry.name)
-            && !referenced.contains(base_name)
-        {
+        if has_filter && !referenced.contains(&entry.name) && !referenced.contains(base_name) {
             continue;
         }
         if local_existing.contains(&entry.name) {
@@ -869,9 +898,19 @@ pub async fn webdav_pull(    server: String,
         }
     }
 
-    // 媒体补齐后再落 project.json，避免出现"引用了还没下载的照片"
-    let project_file = workspace.join("project.json");
-    fs::write(&project_file, &project_bytes).map_err(|e| format!("写入 project.json 失败: {}", e))?;
+    // 媒体补齐后再原子写入 YRP；旧云端 JSON 在本地统一转换。
+    let local_project = workspace.join(project_file::PROJECT_FILE_NAME);
+    let local_bytes = if legacy_json {
+        project_file::encode_yrp(&json_bytes)
+    } else {
+        project_bytes.clone()
+    };
+    project_file::atomic_write(&local_project, &local_bytes)?;
+    let legacy_workspace_json = workspace.join(project_file::LEGACY_PROJECT_FILE_NAME);
+    if legacy_workspace_json.is_file() {
+        fs::remove_file(&legacy_workspace_json)
+            .map_err(|e| format!("移除旧工作区 project.json 失败：{}", e))?;
+    }
 
     Ok(PullReport {
         downloaded_media: downloaded,

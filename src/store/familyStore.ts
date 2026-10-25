@@ -19,10 +19,10 @@ import type { TreeLayoutMode } from '../utils/appPrefs';
 import {
   isTauri,
   selectFilePathForSave,
-  saveProjectJson,
-  backupProjectJson,
+  saveProjectFile as invokeSaveProjectFile,
+  backupProjectFile,
   unpackYrj,
-  loadProjectJson,
+  loadProjectFile,
   packToYrj,
   createUniqueProjectWorkspace,
   resolveWorkspaceDir,
@@ -48,12 +48,22 @@ function saveProject(projectId: string, project: FamilyProject) {
   localStorage.setItem(STORAGE_PREFIX + projectId, JSON.stringify(project));
 }
 
+// 所有工作区保存按调用顺序落盘，切换工程时也能等待此前的自动保存完成。
+let projectSaveQueue: Promise<void> = Promise.resolve();
+function saveProjectFile(workspacePath: string, jsonContent: string): Promise<void> {
+  const task = projectSaveQueue
+    .catch(() => undefined)
+    .then(() => invokeSaveProjectFile(workspacePath, jsonContent));
+  projectSaveQueue = task;
+  return task;
+}
+
 /** 自动持久化：在每次 set() 修改 project 后立即写入（支持 Web 端和 Tauri 端） */
 function autoSave(get: () => FamilyStore) {
   const { currentProjectId, project, currentFilePath } = get();
   if (!currentProjectId || !project) return;
   if (isTauri() && currentFilePath) {
-    saveProjectJson(currentFilePath, JSON.stringify(project, null, 2))
+    saveProjectFile(currentFilePath, JSON.stringify(project, null, 2))
       .catch((e) => console.error('自动保存文件失败:', e));
   } else {
     saveProject(currentProjectId, project);
@@ -122,6 +132,9 @@ interface FamilyStore {
   /** 最近一次打开旧档案时的数据迁移报告（有断链才非空） */
   dataMigrationReport: MigrationReport | null;
   clearDataMigrationReport: () => void;
+  /** 旧 project.json 转 YRP 后，原始 JSON 的缓存备份路径。 */
+  formatBackupPath: string | null;
+  clearFormatBackupPath: () => void;
 
   // 开发者工具状态
   isAnonymized: boolean;
@@ -150,7 +163,7 @@ interface FamilyStore {
   relocateProject: (newWorkspacePath: string) => Promise<void>;
   /** 云同步：上传当前档案（只补传云端缺失的媒体） */
   syncPushToCloud: () => Promise<SyncPushReport>;
-  /** 云同步：拉取云端档案（先自动备份本地 project.json） */
+  /** 云同步：拉取云端档案（先自动备份本地 project.yrp） */
   syncPullFromCloud: () => Promise<SyncPullReport>;
   /**
    * 一键同步：自动判断该上传还是该下载。
@@ -205,10 +218,12 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
   currentFilePath: null,
   projectPassword: null,
   dataMigrationReport: null,
+  formatBackupPath: null,
   isAnonymized: false,
   anonymizedNames: {},
 
   clearDataMigrationReport: () => set({ dataMigrationReport: null }),
+  clearFormatBackupPath: () => set({ formatBackupPath: null }),
 
   // ==================== 项目操作 ====================
 
@@ -236,8 +251,8 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     };
 
     if (isTauri() && filePath) {
-      // 必须调用 saveProjectJson 写入到工作文件夹根下的 project.json 中！
-      saveProjectJson(filePath, JSON.stringify(project, null, 2))
+      // 必须调用 saveProjectFile 写入到工作文件夹根下的 project.json 中！
+      saveProjectFile(filePath, JSON.stringify(project, null, 2))
         .catch((e) => console.error('新建时保存 project.json 失败:', e));
     } else {
       saveProject(projectId, project);
@@ -338,7 +353,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
         const lastSlash = normalized.lastIndexOf('/');
         const parentDir = lastSlash !== -1 ? normalized.substring(0, lastSlash) : '.';
         const fileName = lastSlash !== -1 ? normalized.substring(lastSlash + 1) : normalized;
-        const folderName = fileName.endsWith('.yrj')
+        const folderName = fileName.toLowerCase().endsWith('.yrj')
           ? fileName.substring(0, fileName.length - 4)
           : fileName;
 
@@ -349,11 +364,14 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
         workspacePath = await resolveWorkspaceDir(path);
       }
       workspacePath = normalizeNativePath(workspacePath);
-      workspacePath = normalizeNativePath(workspacePath);
 
-      // 2. 直接以高速明文读取加载工作区下的 project.json 属性
-      const json = await loadProjectJson(workspacePath);
-      const rawProject = JSON.parse(json) as FamilyProject;
+      // 2. 读取 YRP；旧版标准 JSON 会由后端先备份再自动转换。
+      const loaded = await loadProjectFile(workspacePath);
+      // 格式迁移在密码校验前已由后端完成，备份提示不能因解锁失败而丢失。
+      if (loaded.formatBackupPath) {
+        set({ formatBackupPath: loaded.formatBackupPath });
+      }
+      const rawProject = JSON.parse(loaded.json) as FamilyProject;
       const migration = migrateProjectData(rawProject);
       let project = migration.project;
       const migrationReport = migration.report;
@@ -371,7 +389,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
         }
       }
 
-      // 4. 换电脑打开时，project.json 里仍是原电脑的绝对路径（如 C:\Users\A\...\media\photo.jpg），
+      // 4. 换电脑打开时，project.yrp 里仍是原电脑的绝对路径（如 C:\Users\A\...\media\photo.jpg），
       //     必须重新指向本机工作区的 media/，否则照片、音频、视频全部显示不出来。
       let rebasedCount = 0;
       project = rebaseMediaPathsToWorkspace(project, workspacePath, () => {
@@ -385,16 +403,16 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
         person.videoFiles = person.videoFiles || [];
       });
 
-      // 4.5 数据迁移备份：先在 project.json 旁复制一份旧版本快照，再落盘新数据
+      // 4.5 数据迁移备份：先在 project.yrp 旁复制一份旧版本快照，再落盘新数据
       if (migrationReport.brokenRelations.length > 0) {
         try {
-          migrationReport.backupPath = await backupProjectJson(workspacePath, migrationReport.fromVersion);
+          migrationReport.backupPath = await backupProjectFile(workspacePath, migrationReport.fromVersion);
         } catch (e) {
-          console.error('迁移前备份 project.json 失败:', e);
+          console.error('迁移前备份 project.yrp 失败:', e);
         }
       }
       if (rebasedCount > 0 || migrationReport.versionBumped) {
-        await saveProjectJson(workspacePath, JSON.stringify(project, null, 2));
+        await saveProjectFile(workspacePath, JSON.stringify(project, null, 2));
       }
 
       // 更新最近项目，绑定解压后的工作文件夹路径
@@ -500,7 +518,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     const state = get();
     if (state.isDirty && state.currentProjectId && state.project) {
       if (isTauri() && state.currentFilePath) {
-        saveProjectJson(state.currentFilePath, JSON.stringify(state.project, null, 2))
+        saveProjectFile(state.currentFilePath, JSON.stringify(state.project, null, 2))
           .catch((e) => console.error('关闭时保存工作区失败:', e));
       } else {
         saveProject(state.currentProjectId, state.project);
@@ -526,10 +544,10 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
 
     if (isTauri() && currentFilePath) {
       try {
-        await saveProjectJson(currentFilePath, JSON.stringify(updated, null, 2));
+        await saveProjectFile(currentFilePath, JSON.stringify(updated, null, 2));
         set({ project: updated, isDirty: false });
       } catch (err) {
-        console.error('保存工作区 project.json 失败:', err);
+        console.error('保存工作区 project.yrp 失败:', err);
         throw err;
       }
     } else {
@@ -569,9 +587,9 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
 
     try {
       if (currentFilePath) {
-        // 先确保工作区 project.json 处于最新状态
-        await saveProjectJson(currentFilePath, JSON.stringify(updated, null, 2));
-        // 将整个工作区目录（包括 project.json 与 media/ 照片）一并进行 ZIP 压缩加密打包导出为单文件
+        // 先确保工作区 project.yrp 处于最新状态
+        await saveProjectFile(currentFilePath, JSON.stringify(updated, null, 2));
+        // 将整个工作区目录（包括 project.yrp 与 media/ 照片）一并进行 ZIP 压缩加密打包导出为单文件
         await packToYrj(currentFilePath, path, projectPassword || undefined);
       } else {
         // 档案还没落地到工作区（极少见）：直接用同一套容器格式写单文件
@@ -597,7 +615,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
 
     const oldPath = currentFilePath || '';
 
-    // 头像/音视频在 project.json 里是绝对路径，内存中的对象也要同步改写前缀
+    // 头像/音视频在 project.yrp 里是绝对路径，内存中的对象也要同步改写前缀
     let updatedProject = project;
     if (oldPath && oldPath !== newWorkspacePath) {
       const fromEscaped = JSON.stringify(oldPath).slice(1, -1);
@@ -628,8 +646,8 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     }
 
     if (isTauri()) {
-      // 立即在新位置落盘一次，确保 project.json 与当前内存状态一致
-      await saveProjectJson(newWorkspacePath, JSON.stringify(updatedProject, null, 2));
+      // 立即在新位置落盘一次，确保 project.yrp 与当前内存状态一致
+      await saveProjectFile(newWorkspacePath, JSON.stringify(updatedProject, null, 2));
     } else {
       saveProject(currentProjectId, updatedProject);
     }
@@ -641,8 +659,8 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     const { currentFilePath } = get();
     if (!currentFilePath || !isTauri()) return false;
 
-    const json = await loadProjectJson(currentFilePath);
-    const migration = migrateProjectData(JSON.parse(json) as FamilyProject);
+    const loaded = await loadProjectFile(currentFilePath);
+    const migration = migrateProjectData(JSON.parse(loaded.json) as FamilyProject);
     let project = migration.project;
     const migrationReport = migration.report;
     // 云端下来的档案，媒体路径是另一台电脑的绝对路径 → 重新指向本机 media/
@@ -655,17 +673,18 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
 
     if (migrationReport.brokenRelations.length > 0) {
       try {
-        migrationReport.backupPath = await backupProjectJson(currentFilePath, migrationReport.fromVersion);
+        migrationReport.backupPath = await backupProjectFile(currentFilePath, migrationReport.fromVersion);
       } catch (e) {
-        console.error('迁移前备份 project.json 失败:', e);
+        console.error('迁移前备份 project.yrp 失败:', e);
       }
     }
 
-    await saveProjectJson(currentFilePath, JSON.stringify(project, null, 2));
+    await saveProjectFile(currentFilePath, JSON.stringify(project, null, 2));
     set({
       project,
       isDirty: false,
       dataMigrationReport: migrationReport.brokenRelations.length > 0 ? migrationReport : null,
+      formatBackupPath: loaded.formatBackupPath,
     });
     return true;
   },
@@ -685,9 +704,9 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
       set({ project: { ...project, meta: { ...project.meta, syncKey: key } } });
     }
 
-    // 后端直接读磁盘上的 project.json 上传，先确保它是最新状态
+    // 后端直接读磁盘上的 project.yrp 上传，先确保它是最新状态
     const latest = get().project!;
-    await saveProjectJson(currentFilePath, JSON.stringify(latest, null, 2));
+    await saveProjectFile(currentFilePath, JSON.stringify(latest, null, 2));
 
     return webdavPush(
       settings.server,
@@ -725,7 +744,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     if (after && after.meta.syncKey !== key) {
       const updated = { ...after, meta: { ...after.meta, syncKey: key } };
       set({ project: updated });
-      await saveProjectJson(currentFilePath, JSON.stringify(updated, null, 2));
+      await saveProjectFile(currentFilePath, JSON.stringify(updated, null, 2));
     }
 
     return report;
@@ -749,7 +768,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     if (created) {
       const withKey = { ...project, meta: { ...project.meta, syncKey: key } };
       set({ project: withKey });
-      await saveProjectJson(currentFilePath, JSON.stringify(withKey, null, 2));
+      await saveProjectFile(currentFilePath, JSON.stringify(withKey, null, 2));
     }
 
     const meta = await webdavRemoteMeta(
@@ -811,11 +830,11 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
 
     // 绑定同步 ID：云端目录名就是这台家谱的 syncKey，之后两边才能对上
     const key = remoteDir.split('/').filter(Boolean).pop() || '';
-    const json = await loadProjectJson(workspacePath);
-    const parsed = JSON.parse(json) as FamilyProject;
+    const loaded = await loadProjectFile(workspacePath);
+    const parsed = JSON.parse(loaded.json) as FamilyProject;
     if (key && parsed.meta.syncKey !== key) {
       parsed.meta.syncKey = key;
-      await saveProjectJson(workspacePath, JSON.stringify(parsed, null, 2));
+      await saveProjectFile(workspacePath, JSON.stringify(parsed, null, 2));
     }
 
     const opened = await get().openProjectFromFile(workspacePath);

@@ -7,7 +7,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use app_lib::webdav;
+use app_lib::{project_file, webdav};
 
 const USER: &str = "user";
 const PASS: &str = "pass";
@@ -17,11 +17,7 @@ fn mock_dav() -> Option<String> {
 }
 
 fn workspace(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "yiranji-sync-{}-{}",
-        tag,
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("yiranji-sync-{}-{}", tag, std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("media")).unwrap();
     dir
@@ -41,11 +37,13 @@ fn project_json(dir: &Path, updated_at: &str, media: &[&str]) -> String {
 }
 
 fn write_project(dir: &Path, updated_at: &str, media: &[&str]) {
-    fs::write(dir.join("project.json"), project_json(dir, updated_at, media)).unwrap();
+    project_file::write_workspace_project(dir, &project_json(dir, updated_at, media)).unwrap();
 }
 
 fn write_media(dir: &Path, name: &str, size: usize) {
-    let path = dir.join("media").join(name.replace('/', std::path::MAIN_SEPARATOR_STR));
+    let path = dir
+        .join("media")
+        .join(name.replace('/', std::path::MAIN_SEPARATOR_STR));
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).unwrap();
     }
@@ -70,14 +68,10 @@ fn webdav_sync_roundtrip() {
         write_media(&ws1, "avatar_1/cropped.jpg", 2000);
         write_media(&ws1, "avatar_2/cropped.jpg", 3000);
 
-        let path = webdav::webdav_test(
-            server.clone(),
-            USER.into(),
-            PASS.into(),
-            remote_dir.clone(),
-        )
-        .await
-        .expect("测试连接失败");
+        let path =
+            webdav::webdav_test(server.clone(), USER.into(), PASS.into(), remote_dir.clone())
+                .await
+                .expect("测试连接失败");
         println!("连接成功: {path}");
 
         let first = webdav::webdav_push(
@@ -144,8 +138,16 @@ fn webdav_sync_roundtrip() {
         assert_eq!(pull.remote.device, "测试机A");
         assert_eq!(pull.remote.revision, 3);
         assert!(ws2.join("media").join("a.jpg").is_file());
-        assert!(ws2.join("media").join("avatar_1").join("cropped.jpg").is_file());
-        assert!(ws2.join("media").join("avatar_2").join("cropped.jpg").is_file());
+        assert!(ws2
+            .join("media")
+            .join("avatar_1")
+            .join("cropped.jpg")
+            .is_file());
+        assert!(ws2
+            .join("media")
+            .join("avatar_2")
+            .join("cropped.jpg")
+            .is_file());
         assert_eq!(
             fs::metadata(ws2.join("media").join("a.jpg")).unwrap().len(),
             1500,
@@ -159,9 +161,60 @@ fn webdav_sync_roundtrip() {
             "同名文件不应互相覆盖"
         );
 
-        let pulled = fs::read_to_string(ws2.join("project.json")).unwrap();
+        let pulled =
+            project_file::read_project(&ws2.join(project_file::PROJECT_FILE_NAME)).unwrap();
         assert!(pulled.contains("2026-10-19T06:00:00.000Z"));
-        assert!(!pull.backup_path.is_empty(), "覆盖前应备份本地 project.json");
+        assert!(!pull.backup_path.is_empty(), "覆盖前应备份本地 project.yrp");
+
+        // 旧本地 JSON 在云端覆盖前同样必须备份并校验，成功后才可移除。
+        let legacy_ws = workspace("legacy");
+        let legacy_source = project_json(&legacy_ws, "2026-10-18T00:00:00.000Z", &[]);
+        fs::write(
+            legacy_ws.join(project_file::LEGACY_PROJECT_FILE_NAME),
+            &legacy_source,
+        )
+        .unwrap();
+        let legacy_pull = webdav::webdav_pull(
+            server.clone(),
+            USER.into(),
+            PASS.into(),
+            remote_dir.clone(),
+            legacy_ws.to_string_lossy().into_owned(),
+        )
+        .await
+        .expect("旧本地工作区拉取失败");
+        assert!(legacy_pull.backup_path.ends_with(".json"));
+        assert_eq!(
+            fs::read_to_string(&legacy_pull.backup_path).unwrap(),
+            legacy_source
+        );
+        assert!(!legacy_ws
+            .join(project_file::LEGACY_PROJECT_FILE_NAME)
+            .exists());
+        assert!(legacy_ws.join(project_file::PROJECT_FILE_NAME).is_file());
+
+        // YRP 与遗留 JSON 同时存在时，两份本地数据都要保留备份。
+        let dual_legacy_source = project_json(&legacy_ws, "2026-10-17T00:00:00.000Z", &[]);
+        fs::write(
+            legacy_ws.join(project_file::LEGACY_PROJECT_FILE_NAME),
+            &dual_legacy_source,
+        )
+        .unwrap();
+        let dual_pull = webdav::webdav_pull(
+            server.clone(),
+            USER.into(),
+            PASS.into(),
+            remote_dir.clone(),
+            legacy_ws.to_string_lossy().into_owned(),
+        )
+        .await
+        .expect("双格式工作区拉取失败");
+        assert!(dual_pull.backup_path.ends_with(".yrp"));
+        let dual_json_backup = dual_pull.backup_path.replace(".yrp", ".json");
+        assert_eq!(
+            fs::read_to_string(dual_json_backup).unwrap(),
+            dual_legacy_source
+        );
 
         // ---------- 5. 删除的照片不应再被拉回 ----------
         let kept = ["a.jpg", "avatar_1/cropped.jpg"];
@@ -193,7 +246,11 @@ fn webdav_sync_roundtrip() {
         .expect("二次拉取失败");
         println!("删除后拉取: {:?}", pull3);
         assert_eq!(pull3.downloaded_media, 2, "云端残留的已删照片不该再被下载");
-        assert!(!ws3.join("media").join("avatar_2").join("cropped.jpg").exists());
+        assert!(!ws3
+            .join("media")
+            .join("avatar_2")
+            .join("cropped.jpg")
+            .exists());
 
         // ---------- 6. 元信息读取 ----------
         let meta = webdav::webdav_remote_meta(

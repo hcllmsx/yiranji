@@ -597,7 +597,7 @@ export default function SettingsPage() {
     setDialog({
       show: true,
       title: '从云端拉取',
-      message: `将用云端档案覆盖本机当前档案，本机会先把 project.json 备份到 .sync-backup 目录。${
+      message: `将用云端档案覆盖本机当前档案，本机会先把 project.yrp 备份到 .sync-backup 目录。${
         remoteMeta
           ? `云端版本更新于 ${formatSyncTime(remoteMeta.updatedAt)}（来自 ${remoteMeta.device}）。`
           : ''
@@ -821,7 +821,7 @@ export default function SettingsPage() {
                     )}
                   </div>
                   <p className="dev-tool-desc" style={{ marginBottom: '16px' }}>
-                    家谱以文件夹形式实时保存（内含 project.json 与 media 照片），修改后自动写入，无需手动保存。
+                    家谱以文件夹形式实时保存（内含 project.yrp 与 media 照片），修改后自动写入，无需手动保存。
                   </p>
 
                   <div className="form-group">
