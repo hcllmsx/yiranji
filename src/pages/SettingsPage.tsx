@@ -960,7 +960,7 @@ export default function SettingsPage() {
                                 value={sync.server}
                                 autoComplete="off"
                                 spellCheck={false}
-                                placeholder="https://dav.jianguoyun.com/dav/"
+                                placeholder="https://your-webdav.com/webdav/"
                                 onChange={(e) => patchSync({ server: e.target.value })}
                               />
                             </div>

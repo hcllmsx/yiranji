@@ -38,6 +38,7 @@
     "targets": [
       "nsis"
     ],
+    "publisher": "莫莫先生",
     "copyright": "© 2026 莫莫先生",
     "resources": {
       "resources/sample-family": "sample-family"
@@ -73,6 +74,8 @@
           "SimpChinese",
           "English"
         ],
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
         "installerHooks": "./nsis-hooks.nsh"
       }
     },

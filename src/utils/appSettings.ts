@@ -19,7 +19,7 @@ export interface AppPrefs {
 export interface SyncSettings {
   /** 总开关：关掉后不显示云端更新提示 */
   enabled: boolean;
-  /** WebDAV 服务地址，如 https://dav.jianguoyun.com/dav/ */
+  /** WebDAV 服务地址，如 https://your-webdav.com/webdav/ */
   server: string;
   username: string;
   password: string;

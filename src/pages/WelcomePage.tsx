@@ -942,7 +942,7 @@ export default function WelcomePage() {
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="https://dav.jianguoyun.com/dav/"
+                      placeholder="https://your-webdav.com/webdav/"
                       value={cloudSyncConfig.server}
                       onChange={(e) => setCloudSyncConfig({ ...cloudSyncConfig, server: e.target.value })}
                     />
