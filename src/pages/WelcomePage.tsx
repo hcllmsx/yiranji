@@ -463,6 +463,14 @@ export default function WelcomePage() {
     return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
   };
 
+  // 打开记录一多就单列排下去会把首屏撑得很长，按数量切成两列 / 三列
+  const recentColumnsClass =
+    recentProjects.length >= 9
+      ? 'welcome-recent--cols-3'
+      : recentProjects.length >= 4
+        ? 'welcome-recent--cols-2'
+        : '';
+
   return (
     <div className="welcome-page">
       {/* 装饰文字 */}
@@ -598,19 +606,17 @@ export default function WelcomePage() {
 
         {/* 最近项目 */}
         {recentProjects.length > 0 && (
-          <div className="welcome-recent">
+          <div className={`welcome-recent ${recentColumnsClass}`}>
             <div className="welcome-recent-title">最近打开</div>
             <div className="welcome-recent-list">
               {recentProjects.map((item) => (
                 <div
                   key={item.projectId + (item.filePath || '')}
                   className="welcome-recent-item-container"
-                  style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
                 >
                   <button
                     className="welcome-recent-item"
                     onClick={() => handleOpenRecent(item)}
-                    style={{ flex: 1, paddingRight: '48px' }}
                   >
                     <div className="welcome-recent-item-icon">📜</div>
                     <div className="welcome-recent-item-info" style={{ display: 'flex', flexDirection: 'column', width: '100%', minWidth: 0 }}>
