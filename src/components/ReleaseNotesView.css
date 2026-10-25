@@ -1,0 +1,35 @@
+/* 以苒纪 — 更新内容列表（两个更新弹窗共用） */
+
+.release-notes {
+  max-height: 260px;
+  overflow-y: auto;
+  text-align: left;
+  margin-bottom: var(--space-6);
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--color-bg-hover);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+}
+
+.release-notes-section + .release-notes-section {
+  margin-top: var(--space-3);
+}
+
+.release-notes-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 4px;
+}
+
+.release-notes-list {
+  margin: 0;
+  padding-left: 1.15em;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.65;
+}
+
+.release-notes-list li {
+  margin: 2px 0;
+}

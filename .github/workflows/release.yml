@@ -2,8 +2,8 @@
 # 网盘分发 / 二维码引导发布工作流（免打包纯公告模式）
 #
 # 以苒纪的安装包通过百度网盘 / 夸克网盘分发，不在 GitHub Release 挂载二进制文件。
-# 本工作流只做一件事：打 tag 后自动生成 Release 公告，正文 = CHANGELOG 里对应
-# 版本的更新内容 + 网盘下载二维码引导，全程无需编译打包，秒级完成。
+# 本工作流只做一件事：打 tag 后自动生成 Release 公告，正文 = release-notes.json
+# 里当前版本的更新内容 + 网盘下载二维码引导，全程无需编译打包，秒级完成。
 #
 # 发版流程：改 VERSION -> 运行 npm run sync-version 同步各配置文件 -> 补 CHANGELOG
 #           -> 提交 -> 打 tag（v<VERSION>）-> push tag
@@ -63,16 +63,26 @@ jobs:
           $cargoVersion = [regex]::Match($cargoToml, '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
           Assert-SyncedVersion "src-tauri/Cargo.toml" $cargoVersion
 
-          # 3. 从 CHANGELOG.md 提取当前版本的更新说明（形如 ## v26.10.24）
-          $notes = "Release v$ver"
-          if (Test-Path "CHANGELOG.md") {
-            $changelog = Get-Content -Raw -Encoding UTF8 "CHANGELOG.md"
-            $esc = [regex]::Escape($ver)
-            $pattern = '(?ms)^##\s+\[?v?' + $esc + '\]?.*?\r?\n(.*?)(?=^##\s+|\Z)'
-            if ($changelog -match $pattern) {
-              $extracted = $matches[1].Trim()
-              if ($extracted) { $notes = $extracted }
+          # 3. 读取由 scripts/sync-version.mjs 从 CHANGELOG 生成的当前版本更新说明
+          #    CHANGELOG 再大也只影响本地文件读取，与发布耗时无关；这里不重复解析它
+          if (-not (Test-Path "release-notes.json")) {
+            throw "Error: release-notes.json not found. Run 'npm run sync-version' and commit it."
+          }
+          $releaseNotes = Get-Content -Raw -Encoding UTF8 "release-notes.json" | ConvertFrom-Json -AsHashtable
+          if ($releaseNotes['version'] -ne $ver) {
+            throw "Error: release-notes.json version '$($releaseNotes['version'])' does not match VERSION '$ver'. Run 'npm run sync-version' before committing."
+          }
+          $noteLines = @()
+          foreach ($section in $releaseNotes['sections']) {
+            $noteLines += "### $($section['title'])"
+            foreach ($item in $section['items']) {
+              $noteLines += "- $item"
             }
+            $noteLines += ''
+          }
+          $notes = ($noteLines -join [Environment]::NewLine).Trim()
+          if (-not $notes) {
+            throw "Error: release-notes.json has no content for v$ver."
           }
 
           # 4. 拼接更新内容 + 网盘二维码引导

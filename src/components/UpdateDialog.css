@@ -72,6 +72,11 @@
   margin-bottom: var(--space-6);
 }
 
+/* 本次更新内容弹窗：无顶部图标，收紧上内边距 */
+.update-dialog.whats-new-dialog {
+  padding-top: var(--space-6);
+}
+
 .update-buttons {
   display: flex;
   justify-content: center;

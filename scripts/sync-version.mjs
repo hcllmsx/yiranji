@@ -57,6 +57,62 @@ function replaceCargoLockAppVersion(content, version) {
   return content.replace(appPackage[0], `${appPackage[1]}${appPackage[2]}${version}${appPackage[3]}`);
 }
 
+/** 取出 CHANGELOG 中指定版本（形如 ## v26.10.24）到下一个二级标题之间的正文 */
+function readChangelogSection(markdown, targetVersion) {
+  const lines = markdown.split(/\r?\n/);
+  let start = -1;
+  let end = lines.length;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line.startsWith('## ')) continue;
+
+    let heading = line.slice(3).trim();
+    if (heading.startsWith('[') && heading.endsWith(']')) {
+      heading = heading.slice(1, -1);
+    }
+    heading = heading.replace(/^v/, '').trim();
+
+    if (start === -1) {
+      if (heading === targetVersion) start = i + 1;
+    } else {
+      end = i;
+      break;
+    }
+  }
+
+  return start === -1 ? null : lines.slice(start, end);
+}
+
+/** 把更新说明正文解析为 [{ title, items }]，只认 ### 小标题与 - 条目 */
+function parseChangelogSections(bodyLines) {
+  const sections = [];
+  let current = null;
+
+  for (const raw of bodyLines) {
+    const line = raw.trim();
+    if (!line || line === '---') continue;
+
+    const heading = /^###\s+(.+)$/.exec(line);
+    if (heading) {
+      current = { title: heading[1].trim(), items: [] };
+      sections.push(current);
+      continue;
+    }
+
+    const item = /^[-*]\s+(.+)$/.exec(line);
+    if (item) {
+      if (!current) {
+        current = { title: '更新内容', items: [] };
+        sections.push(current);
+      }
+      current.items.push(item[1].trim());
+    }
+  }
+
+  return sections.filter((section) => section.items.length > 0);
+}
+
 writeJsonVersion('package.json', (data) => {
   data.version = version;
 });
@@ -97,6 +153,30 @@ if (fs.existsSync(nsisHooksPath)) {
   fs.writeFileSync(nsisHooksPath, replaced);
 } else {
   console.warn('src-tauri/nsis-hooks.nsh not found; skipping NSIS hooks version sync.');
+}
+
+// 从 CHANGELOG 当前版本一节生成客户端专用的更新说明（单版本、结构化、体积小），
+// 供更新弹窗直接渲染，避免在运行时拉取并解析会持续变大的 CHANGELOG.md。
+const changelogPath = path.join(rootDir, 'CHANGELOG.md');
+const releaseNotesPath = path.join(rootDir, 'release-notes.json');
+if (fs.existsSync(changelogPath)) {
+  const body = readChangelogSection(fs.readFileSync(changelogPath, 'utf8'), version);
+  const sections = body ? parseChangelogSections(body) : [];
+
+  if (sections.length > 0) {
+    const content = `${JSON.stringify({ version, sections }, null, 2)}\n`;
+    const previous = fs.existsSync(releaseNotesPath)
+      ? fs.readFileSync(releaseNotesPath, 'utf8')
+      : '';
+    if (previous !== content) {
+      fs.writeFileSync(releaseNotesPath, content);
+    }
+    console.log(`Generated release-notes.json for ${version}.`);
+  } else {
+    console.warn(`Skipped release-notes.json: no usable "## v${version}" section in CHANGELOG.md.`);
+  }
+} else {
+  console.warn('CHANGELOG.md not found; skipping release-notes.json generation.');
 }
 
 console.log(`Synced app version to ${version}.`);

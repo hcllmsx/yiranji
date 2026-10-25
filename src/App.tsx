@@ -3,8 +3,10 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import WelcomePage from './pages/WelcomePage';
 import MainLayout from './components/MainLayout';
 import UpdateDialog from './components/UpdateDialog';
+import WhatsNewDialog from './components/WhatsNewDialog';
 import MajorUpdateNotice from './components/MajorUpdateNotice';
 import { checkForUpdate } from './utils/updateChecker';
+import { getStartupReleaseNotes } from './utils/whatsNew';
 import { useUpdateStore } from './store/updateStore';
 import { initAppSettings } from './utils/appSettings';
 import './index.css';
@@ -36,16 +38,29 @@ function RouteLoading() {
 }
 
 function App() {
-  // 启动静默检查更新：仅每次启动检查一次，发现新版本弹窗提示；失败不提示
+  // 启动静默检查更新 + 升级后首次启动展示本次更新内容
   const didSilentCheckRef = useRef(false);
   useEffect(() => {
-    initAppSettings();
     if (didSilentCheckRef.current) return;
     didSilentCheckRef.current = true;
+
+    // 设置从磁盘加载完成后再判断版本变化，避免读到旧缓存
+    initAppSettings()
+      .then(() => {
+        const notes = getStartupReleaseNotes();
+        if (notes) {
+          useUpdateStore.getState().openWhatsNew(notes);
+        }
+      })
+      .catch(() => {
+        // 设置读取失败时跳过本次更新说明，不影响启动
+      });
+
+    // 发现新版本弹窗优先；若「本次更新内容」还开着，由 store 排队稍后弹出
     checkForUpdate()
       .then((result) => {
         if (result.status === 'update-available' && result.latestVersion) {
-          useUpdateStore.getState().openUpdateDialog(result.latestVersion);
+          useUpdateStore.getState().openUpdateDialog(result.latestVersion, result.sourceIndex);
         }
       })
       .catch(() => {
@@ -56,6 +71,7 @@ function App() {
   return (
     <BrowserRouter>
       <UpdateDialog />
+      <WhatsNewDialog />
       <MajorUpdateNotice />
       <Routes>
         <Route path="/" element={<WelcomePage />} />
