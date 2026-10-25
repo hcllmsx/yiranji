@@ -157,26 +157,56 @@ if (fs.existsSync(nsisHooksPath)) {
 
 // 从 CHANGELOG 当前版本一节生成客户端专用的更新说明（单版本、结构化、体积小），
 // 供更新弹窗直接渲染，避免在运行时拉取并解析会持续变大的 CHANGELOG.md。
+//
+// 找不到当前版本小节时不做静默跳过（否则会沿用旧版本说明），而是写入带
+// fallback 标记的兜底内容，并在控制台醒目警告，提醒补全 CHANGELOG 后重跑。
+const FALLBACK_NOTES_TEXT = '本次未写或未读取到更新内容。';
 const changelogPath = path.join(rootDir, 'CHANGELOG.md');
 const releaseNotesPath = path.join(rootDir, 'release-notes.json');
+
+let releaseNotes = null;
+let fallbackReason = '';
+
 if (fs.existsSync(changelogPath)) {
   const body = readChangelogSection(fs.readFileSync(changelogPath, 'utf8'), version);
   const sections = body ? parseChangelogSections(body) : [];
-
-  if (sections.length > 0) {
-    const content = `${JSON.stringify({ version, sections }, null, 2)}\n`;
-    const previous = fs.existsSync(releaseNotesPath)
-      ? fs.readFileSync(releaseNotesPath, 'utf8')
-      : '';
-    if (previous !== content) {
-      fs.writeFileSync(releaseNotesPath, content);
-    }
-    console.log(`Generated release-notes.json for ${version}.`);
+  if (!body) {
+    fallbackReason = `CHANGELOG.md 中没有 "## v${version}" 小节`;
+  } else if (sections.length === 0) {
+    fallbackReason = `CHANGELOG.md 的 "## v${version}" 小节没有可解析的 "### 分类" 与 "- 条目"`;
   } else {
-    console.warn(`Skipped release-notes.json: no usable "## v${version}" section in CHANGELOG.md.`);
+    releaseNotes = { version, sections };
   }
 } else {
-  console.warn('CHANGELOG.md not found; skipping release-notes.json generation.');
+  fallbackReason = 'CHANGELOG.md 不存在';
+}
+
+if (!releaseNotes) {
+  releaseNotes = {
+    version,
+    fallback: true,
+    sections: [{ title: '更新内容', items: [FALLBACK_NOTES_TEXT] }],
+  };
+}
+
+const notesContent = `${JSON.stringify(releaseNotes, null, 2)}\n`;
+const previousNotes = fs.existsSync(releaseNotesPath)
+  ? fs.readFileSync(releaseNotesPath, 'utf8')
+  : '';
+if (previousNotes !== notesContent) {
+  fs.writeFileSync(releaseNotesPath, notesContent);
+}
+
+if (fallbackReason) {
+  console.warn('');
+  console.warn('------------------------------------------------------------');
+  console.warn(`[警告] ${fallbackReason}。`);
+  console.warn(`[警告] 已生成兜底 release-notes.json：“${FALLBACK_NOTES_TEXT}”`);
+  console.warn('[警告] 请补全 CHANGELOG.md 的当前版本小节后，重新运行 npm run sync-version。');
+  console.warn('------------------------------------------------------------');
+  console.warn('');
+} else {
+  console.log(`Generated release-notes.json for ${version}.`);
 }
 
 console.log(`Synced app version to ${version}.`);

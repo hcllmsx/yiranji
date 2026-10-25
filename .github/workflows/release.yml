@@ -5,8 +5,9 @@
 # 本工作流只做一件事：打 tag 后自动生成 Release 公告，正文 = release-notes.json
 # 里当前版本的更新内容 + 网盘下载二维码引导，全程无需编译打包，秒级完成。
 #
-# 发版流程：改 VERSION -> 运行 npm run sync-version 同步各配置文件 -> 补 CHANGELOG
-#           -> 提交 -> 打 tag（v<VERSION>）-> push tag
+# 发版流程：改 VERSION -> 补 CHANGELOG.md -> 运行 npm run sync-version
+#           （同步各配置文件版本并生成 release-notes.json）-> 提交
+#           -> 打 tag（v<VERSION>）-> push tag
 # ============================================================
 name: Release
 
@@ -71,6 +72,10 @@ jobs:
           $releaseNotes = Get-Content -Raw -Encoding UTF8 "release-notes.json" | ConvertFrom-Json -AsHashtable
           if ($releaseNotes['version'] -ne $ver) {
             throw "Error: release-notes.json version '$($releaseNotes['version'])' does not match VERSION '$ver'. Run 'npm run sync-version' before committing."
+          }
+          if ($releaseNotes['fallback']) {
+            # 兜底说明说明发版前忘了补 CHANGELOG：不阻断发布，但在 Actions 运行页给出警告注解
+            Write-Host "::warning::release-notes.json 为兜底内容：未读取到 CHANGELOG.md 中 v$ver 的更新说明。请补全 CHANGELOG.md 后重新运行 npm run sync-version 再发版。"
           }
           $noteLines = @()
           foreach ($section in $releaseNotes['sections']) {
