@@ -333,26 +333,28 @@ function PersonNode({ data }: { data: PersonNodeData }) {
       {showCoordinates && (
         isEditing ? (
           <div
-            className="tree-node-coordinate-input-container"
+            className="tree-node-coordinate-input-container nodrag"
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
           >
             <input
               type="number"
-              className="coordinate-input"
+              className="coordinate-input nodrag"
               value={editX}
               onChange={(e) => setEditX(e.target.value)}
               onKeyDown={handleKeyDown}
+              onFocus={(e) => e.currentTarget.select()}
               placeholder="X"
               autoFocus
             />
             <span className="coordinate-comma">,</span>
             <input
               type="number"
-              className="coordinate-input"
+              className="coordinate-input nodrag"
               value={editY}
               onChange={(e) => setEditY(e.target.value)}
               onKeyDown={handleKeyDown}
+              onFocus={(e) => e.currentTarget.select()}
               placeholder="Y"
             />
             <button className="btn-coordinate-ok" onClick={handleSave}>✓</button>
@@ -360,7 +362,7 @@ function PersonNode({ data }: { data: PersonNodeData }) {
           </div>
         ) : (
           <div
-            className="tree-node-coordinate clickable"
+            className="tree-node-coordinate clickable nodrag"
             onClick={(e) => {
               e.stopPropagation();
               setEditX(Math.round(posX).toString());

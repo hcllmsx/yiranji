@@ -545,6 +545,11 @@
   border-radius: 3px;
   outline: none;
   text-align: center;
+  /* React Flow 的 .react-flow__node 是 user-select: none，会让输入框无法按住左键拖选数字 */
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  user-select: text;
+  cursor: text;
 }
 
 .coordinate-input:focus {
