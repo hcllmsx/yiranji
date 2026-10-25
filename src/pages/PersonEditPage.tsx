@@ -1103,16 +1103,15 @@ export default function PersonEditPage() {
 
     const currentPersonId = id && !isNew ? id : uuidv4();
 
-    // 记录保存前是否已有生父生母/养父母，用于区分"用户主动清除"与"原本就没设"两种场景
+    // 记录保存前是否已有生父生母，用于区分"用户主动清除"与"原本就没设"两种场景
     const origRelations: Relations = existingPerson?.relations ?? { spouses: [], children: [] };
     const origHadParents = !!(origRelations.father || origRelations.mother);
-    const origHadAdoptiveParents = getAdoptiveGroups(origRelations).length > 0;
     // 记录保存前的生父生母 ID，用于父母变更/取消后清理旧父母 children 列表
     const origFatherId = existingPerson?.relations.father;
     const origMotherId = existingPerson?.relations.mother;
 
     if (project) {
-      // 若生父母未设置，但选中手足已设置，则自动继承其父母
+      // 若生父母未设置，但选中手足已设置，则自动继承其生父母
       // 仅当原来就没有生父生母时才继承（新建或原本未设）；
       // 若原来有生父生母而用户主动清空，则尊重用户意图，不继承
       if (!finalFatherId && !finalMotherId && !origHadParents) {
@@ -1122,19 +1121,6 @@ export default function PersonEditPage() {
             finalFatherId = sib.relations.father || '';
             finalMotherId = sib.relations.mother || '';
             break;
-          }
-        }
-      }
-      // 养父母做同等继承（同样仅在原来就没有养父母时才继承）
-      if (finalAdoptiveGroups.length === 0 && !origHadAdoptiveParents) {
-        for (const sibId of siblingIds) {
-          const sib = project.persons[sibId];
-          if (sib) {
-            const sibGroups = getAdoptiveGroups(sib.relations);
-            if (sibGroups.length > 0) {
-              finalAdoptiveGroups = sibGroups.map((group) => ({ ...group }));
-              break;
-            }
           }
         }
       }
@@ -1237,8 +1223,8 @@ export default function PersonEditPage() {
 
     // 后续手足及父母子嗣属性双向同步
     if (project) {
-      // 1. 同步将兄弟姐妹的父母设为跟本人一致
-      // 仅在本人设置了父母时才同步给手足；本人取消父母时不影响手足已有的父母关系
+      // 1. 同步将兄弟姐妹的生父生母设为跟本人一致；养父母按各自实际收养关系独立维护
+      // 仅在本人设置了生父母时才同步给手足；本人取消生父母时不影响手足已有的生父母关系
       for (const sibId of siblingIds) {
         const sib = project.persons[sibId];
         if (sib) {
@@ -1248,32 +1234,16 @@ export default function PersonEditPage() {
           if (finalMotherId) {
             sib.relations.mother = finalMotherId;
           }
-          if (finalAdoptiveGroups.length > 0) {
-            sib.relations.adoptiveParents = finalAdoptiveGroups.map((group) => ({ ...group }));
-            delete sib.relations.adoptiveFather;
-            delete sib.relations.adoptiveMother;
-            delete sib.relations.adoptiveFathers;
-            delete sib.relations.adoptiveMothers;
-          }
           await updatePerson(sibId, { relations: sib.relations });
         }
       }
 
-      // 2. 将被剔除的兄弟姐妹的父母关系置空
+      // 2. 将被剔除的兄弟姐妹的生父母关系置空，不改动其独立养父母关系
       for (const remId of removedSiblingIds) {
         const rem = project.persons[remId];
         if (rem) {
           if (rem.relations.father === finalFatherId) rem.relations.father = undefined;
           if (rem.relations.mother === finalMotherId) rem.relations.mother = undefined;
-          // 清理养父母分组引用
-          if (rem.relations.adoptiveParents) {
-            let groups = rem.relations.adoptiveParents;
-            finalAdoptiveGroups.forEach((group) => {
-              if (group.fatherId) groups = removePersonFromAdoptiveGroups(groups, group.fatherId) ?? groups;
-              if (group.motherId) groups = removePersonFromAdoptiveGroups(groups, group.motherId) ?? groups;
-            });
-            rem.relations.adoptiveParents = groups;
-          }
           await updatePerson(remId, { relations: rem.relations });
         }
       }
@@ -1594,7 +1564,6 @@ export default function PersonEditPage() {
             ...sibObj.relations,
             father: fatherId || undefined,
             mother: motherId || undefined,
-            adoptiveParents: tempAdoptiveGroups.length > 0 ? tempAdoptiveGroups : undefined,
           }
         };
       }
