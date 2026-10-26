@@ -850,7 +850,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
       settings.server,
       settings.username,
       settings.password,
-      remoteDir,
+      remoteDirFor(settings, remoteDir.split('/').filter(Boolean).pop() || ''),
       workspacePath
     );
 

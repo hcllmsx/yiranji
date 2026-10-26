@@ -746,23 +746,13 @@
   animation: saveas-loading-rotate 9s linear infinite;
 }
 
-.saveas-loading-emblem::after {
-  content: '';
-  position: absolute;
-  inset: 9px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 32% 26%, oklch(70% 0.16 25), var(--color-accent) 72%);
-  box-shadow: 0 8px 22px oklch(58% 0.18 25 / 0.28);
-}
-
-.saveas-loading-seal {
+.saveas-loading-logo {
   position: relative;
   z-index: 1;
-  font-family: var(--font-display);
-  font-size: 26px;
-  font-weight: 700;
-  color: var(--color-text-inverse);
-  line-height: 1;
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 14px oklch(58% 0.18 25 / 0.22));
 }
 
 .saveas-loading-title {

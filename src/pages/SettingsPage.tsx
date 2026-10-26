@@ -13,6 +13,8 @@ import {
   webdavTest,
   webdavRemoteMeta,
   getWorkspaceStats,
+  listenWebdavPullProgress,
+  type WebdavPullProgress,
   type RemoteSyncMeta,
   type FolderStats,
 } from '../utils/tauri';
@@ -104,6 +106,38 @@ export default function SettingsPage() {
   const [showSyncPass, setShowSyncPass] = useState(false);
   const [syncBusy, setSyncBusy] = useState<'' | 'test' | 'push' | 'pull'>('');
   const [remoteMeta, setRemoteMeta] = useState<RemoteSyncMeta | null>(null);
+  const [pullProgress, setPullProgress] = useState<WebdavPullProgress>({
+    stage: 'project',
+    current: 0,
+    total: 0,
+    fileName: '',
+    message: '准备拉取…',
+  });
+  const [pullElapsed, setPullElapsed] = useState(0);
+
+  useEffect(() => {
+    if (syncBusy !== 'pull') {
+      setPullElapsed(0);
+      return;
+    }
+    const started = Date.now();
+    const tick = () => setPullElapsed(Math.max(0, Math.floor((Date.now() - started) / 1000)));
+    tick();
+    const timer = window.setInterval(tick, 500);
+    let active = true;
+    let unlisten: (() => void) | undefined;
+    listenWebdavPullProgress((p) => {
+      if (active) setPullProgress(p);
+    }).then((stop) => {
+      if (active) unlisten = stop;
+      else stop();
+    });
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      unlisten?.();
+    };
+  }, [syncBusy]);
 
   useEffect(() => {
     return subscribeSettings(() => {
@@ -565,6 +599,13 @@ export default function SettingsPage() {
   };
 
   const doPull = async () => {
+    setPullProgress({
+      stage: 'project',
+      current: 1,
+      total: 0,
+      fileName: 'project.yrp',
+      message: '正在拉取家谱主档案数据…',
+    });
     setSyncBusy('pull');
     try {
       const report = await syncPullFromCloud();
@@ -629,7 +670,48 @@ export default function SettingsPage() {
       {/* ---- 密码验证对话框 ---- */}
       {dialog && (
         <div className="custom-dialog-overlay" onClick={closeDialog}>
-          <div className="custom-dialog-box" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="custom-dialog-box"
+            style={{
+              position: 'relative',
+              overflow: 'hidden',
+              minHeight: syncBusy === 'pull' ? '340px' : undefined,
+              transition: 'min-height 0.2s ease',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {syncBusy === 'pull' && (
+              <div className="saveas-loading-overlay" role="status" aria-live="polite">
+                <div className="saveas-loading-inner">
+                  <div className="saveas-loading-emblem" aria-hidden="true">
+                    <img src="/yiranji-logo-512px.png" alt="" className="saveas-loading-logo" draggable={false} />
+                  </div>
+
+                  <div className="saveas-loading-title">
+                    正在从云端拉取「{project.meta.familyName || '当前家谱'}」
+                  </div>
+
+                  {pullProgress.fileName && (
+                    <p className="saveas-loading-file" title={pullProgress.fileName}>
+                      {pullProgress.fileName}
+                    </p>
+                  )}
+
+                  <div className="saveas-loading-stage-line">
+                    <span className="route-loading-spinner" aria-hidden="true" />
+                    <span className="saveas-loading-stage">{pullProgress.message}</span>
+                  </div>
+
+                  <div className="saveas-loading-track" aria-hidden="true">
+                    <span className="saveas-loading-bar" />
+                  </div>
+
+                  <p className="saveas-loading-hint">
+                    已用 {pullElapsed} 秒 · 档案包含较多照片、音频时，拉取需要一些时间，请稍候
+                  </p>
+                </div>
+              </div>
+            )}
             <div className="custom-dialog-header">
               <span className="custom-dialog-icon">🔒</span>
               <span className="custom-dialog-title">{dialog.title}</span>

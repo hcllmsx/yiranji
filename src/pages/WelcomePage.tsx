@@ -11,7 +11,9 @@ import {
   openUrl,
   installSampleWorkspace,
   webdavListProjects,
+  listenWebdavPullProgress,
   type RemoteProject,
+  type WebdavPullProgress,
 } from '../utils/tauri';
 import { getSyncSettings, saveSyncSettings, isSyncConfigured, formatSyncTime } from '../utils/cloudSync';
 import { getDefaultSaveDir, shouldShowSampleEntry, dismissSampleEntry } from '../utils/appPrefs';
@@ -38,6 +40,15 @@ export default function WelcomePage() {
   const [cloudError, setCloudError] = useState('');
   const [cloudProjects, setCloudProjects] = useState<RemoteProject[]>([]);
   const [restoringDir, setRestoringDir] = useState('');
+  const [restoringName, setRestoringName] = useState('');
+  const [pullProgress, setPullProgress] = useState<WebdavPullProgress>({
+    stage: 'project',
+    current: 0,
+    total: 0,
+    fileName: '',
+    message: '准备拉取…',
+  });
+  const [pullElapsed, setPullElapsed] = useState(0);
   const [showCloudConfig, setShowCloudConfig] = useState(false);
   const [isCloudDisabled, setIsCloudDisabled] = useState(false);
   const [cloudSyncConfig, setCloudSyncConfig] = useState(() => getSyncSettings());
@@ -311,7 +322,20 @@ export default function WelcomePage() {
   };
 
   // 恢复家谱：联动“默认保存位置”，若已设置则直接使用，无需每次手动选择
+  useEffect(() => {
+    if (!restoringDir) {
+      setPullElapsed(0);
+      return;
+    }
+    const started = Date.now();
+    const tick = () => setPullElapsed(Math.max(0, Math.floor((Date.now() - started) / 1000)));
+    tick();
+    const timer = window.setInterval(tick, 500);
+    return () => window.clearInterval(timer);
+  }, [restoringDir]);
+
   const handleRestoreProject = async (rp: RemoteProject) => {
+    let unlisten: (() => void) | undefined;
     try {
       const defaultDir = getDefaultSaveDir();
       let parentDir: string = defaultDir || '';
@@ -320,15 +344,37 @@ export default function WelcomePage() {
         if (!selected) return;
         parentDir = selected;
       }
+      const targetName = rp.familyName || rp.dir;
+      setRestoringName(targetName);
+      setPullProgress({
+        stage: 'project',
+        current: 1,
+        total: 0,
+        fileName: 'project.yrp',
+        message: '正在拉取家谱主档案数据…',
+      });
       setRestoringDir(rp.dir);
-      const res = await restoreProjectFromCloud(rp.dir, parentDir, rp.familyName || rp.dir);
+      unlisten = await listenWebdavPullProgress((p) => {
+        setPullProgress(p);
+      });
+      const res = await restoreProjectFromCloud(rp.dir, parentDir, targetName);
       setShowCloudModal(false);
-      showCustomAlert(`成功从云端恢复家谱“${rp.familyName || rp.dir}”（包含 ${res.media} 个媒体文件）`);
+      showCustomAlert(`成功从云端恢复家谱“${targetName}”（包含 ${res.media} 个媒体文件）`);
       navigate('/tree');
     } catch (err: any) {
-      showCustomAlert(`从云端恢复家谱失败: ${err?.message || err}`);
+      if (err?.message === 'PASSWORD_REQUIRED_OR_INCORRECT' && err.workspacePath) {
+        setShowCloudModal(false);
+        setPendingOpenPath(err.workspacePath);
+        setUnlockPassword('');
+        setUnlockError('');
+        setShowPasswordModal(true);
+      } else {
+        showCustomAlert(`从云端恢复家谱失败: ${err?.message || err}`);
+      }
     } finally {
+      unlisten?.();
       setRestoringDir('');
+      setRestoringName('');
     }
   };
 
@@ -911,9 +957,48 @@ export default function WelcomePage() {
         <div className="modal-overlay" onClick={() => !restoringDir && setShowCloudModal(false)}>
           <div
             className="modal animate-scale-in"
-            style={{ maxWidth: '520px', width: '90%' }}
+            style={{
+              maxWidth: '520px',
+              width: '90%',
+              position: 'relative',
+              overflow: 'hidden',
+              minHeight: restoringDir ? '340px' : undefined,
+              transition: 'min-height 0.2s ease',
+            }}
             onClick={(e) => e.stopPropagation()}
           >
+            {restoringDir && (
+              <div className="saveas-loading-overlay" role="status" aria-live="polite">
+                <div className="saveas-loading-inner">
+                  <div className="saveas-loading-emblem" aria-hidden="true">
+                    <img src="/yiranji-logo-512px.png" alt="" className="saveas-loading-logo" draggable={false} />
+                  </div>
+
+                  <div className="saveas-loading-title">
+                    正在从云端拉取「{restoringName || restoringDir}」
+                  </div>
+
+                  {pullProgress.fileName && (
+                    <p className="saveas-loading-file" title={pullProgress.fileName}>
+                      {pullProgress.fileName}
+                    </p>
+                  )}
+
+                  <div className="saveas-loading-stage-line">
+                    <span className="route-loading-spinner" aria-hidden="true" />
+                    <span className="saveas-loading-stage">{pullProgress.message}</span>
+                  </div>
+
+                  <div className="saveas-loading-track" aria-hidden="true">
+                    <span className="saveas-loading-bar" />
+                  </div>
+
+                  <p className="saveas-loading-hint">
+                    已用 {pullElapsed} 秒 · 档案包含较多照片、音频时，拉取需要一些时间，请稍候
+                  </p>
+                </div>
+              </div>
+            )}
             <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0 }}>从云端获取家谱</h3>
               <button

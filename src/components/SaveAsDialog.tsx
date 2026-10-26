@@ -229,7 +229,7 @@ export default function SaveAsDialog({
           <div className="saveas-loading-overlay" role="status" aria-live="polite">
             <div className="saveas-loading-inner">
               <div className="saveas-loading-emblem" aria-hidden="true">
-                <span className="saveas-loading-seal">纪</span>
+                <img src="/yiranji-logo-512px.png" alt="" className="saveas-loading-logo" draggable={false} />
               </div>
 
               <div className="saveas-loading-title">

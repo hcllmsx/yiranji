@@ -495,6 +495,29 @@ export async function webdavPull(
 
 // ==================== 统一软件设置（settings.json） ====================
 
+export interface WebdavPullProgress {
+  stage: string;
+  current: number;
+  total: number;
+  fileName: string;
+  message: string;
+}
+
+/** 监听 WebDAV 拉取实时进度事件，返回取消监听函数 */
+export async function listenWebdavPullProgress(
+  callback: (progress: WebdavPullProgress) => void
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  try {
+    const { listen } = await import('@tauri-apps/api/event');
+    return await listen<WebdavPullProgress>('webdav-pull-progress', (event) => {
+      callback(event.payload);
+    });
+  } catch {
+    return () => {};
+  }
+}
+
 export interface AppSettingsPayload {
   sync?: any;
   prefs?: any;

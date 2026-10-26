@@ -62,6 +62,16 @@ pub struct PullReport {
     pub remote: RemoteSyncMeta,
 }
 
+#[derive(Debug, Serialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PullProgressEvent {
+    pub stage: String,
+    pub current: usize,
+    pub total: usize,
+    pub file_name: String,
+    pub message: String,
+}
+
 #[derive(Debug, Clone)]
 struct RemoteEntry {
     /// 相对 media 根目录的路径，统一用 '/' 分隔（头像等媒体会放在子目录里）
@@ -533,12 +543,13 @@ fn collect_referenced_media(value: &serde_json::Value) -> std::collections::Hash
     fn walk(v: &serde_json::Value, set: &mut std::collections::HashSet<String>) {
         match v {
             serde_json::Value::String(s) => {
+                let posix = s.replace('\\', "/");
                 for marker in ["/media/", "__YIRANJI_MEDIA__/"] {
-                    if let Some(idx) = s.rfind(marker) {
-                        let name = &s[idx + marker.len()..];
+                    if let Some(idx) = posix.rfind(marker) {
+                        let name = &posix[idx + marker.len()..];
                         let name = name.trim_start_matches('/');
                         if !name.is_empty() {
-                            set.insert(name.replace('\\', "/"));
+                            set.insert(name.to_string());
                         }
                     }
                 }
@@ -819,7 +830,6 @@ pub async fn webdav_list_projects(
 }
 
 /// 下载：project.yrp（先备份本地）+ 本地缺失的媒体；旧云端 JSON 自动转为 YRP。
-#[tauri::command]
 pub async fn webdav_pull(
     server: String,
     username: String,
@@ -827,10 +837,33 @@ pub async fn webdav_pull(
     remote_dir: String,
     workspace_path: String,
 ) -> Result<PullReport, String> {
+    webdav_pull_with_progress(server, username, password, remote_dir, workspace_path, |_| {}).await
+}
+
+/// 带实时进度回调的云端拉取实现
+pub async fn webdav_pull_with_progress<F>(
+    server: String,
+    username: String,
+    password: String,
+    remote_dir: String,
+    workspace_path: String,
+    mut on_progress: F,
+) -> Result<PullReport, String>
+where
+    F: FnMut(PullProgressEvent),
+{
     let server = normalize_server(&server);
     let dir = normalize_dir(&remote_dir);
     let client = build_client()?;
     let workspace = PathBuf::from(&workspace_path);
+
+    on_progress(PullProgressEvent {
+        stage: "project".to_string(),
+        current: 1,
+        total: 0,
+        file_name: project_file::PROJECT_FILE_NAME.to_string(),
+        message: "正在拉取家谱主档案数据…".to_string(),
+    });
 
     let project_url = join_url(&server, &format!("{}/project.yrp", dir));
     let (project_bytes, legacy_json) =
@@ -861,6 +894,14 @@ pub async fn webdav_pull(
         .map(|(rel, _, _)| rel)
         .collect();
 
+    on_progress(PullProgressEvent {
+        stage: "scan".to_string(),
+        current: 1,
+        total: 0,
+        file_name: "media/".to_string(),
+        message: "正在清点云端媒体文件列表…".to_string(),
+    });
+
     let media_url = join_url(&server, &format!("{}/media", dir));
     // 递归列出，子目录里的头像也要能拉到（工程引用的是 media/avatar/circle/xxx_cropped.png 这类路径）
     let remote_entries = list_tree(&client, &media_url, &username, &password, 4).await?;
@@ -878,6 +919,7 @@ pub async fn webdav_pull(
 
     let mut downloaded = 0usize;
     let mut skipped = 0usize;
+    let mut to_download: Vec<&RemoteEntry> = Vec::new();
     for entry in &remote_entries {
         let base_name = entry.name.rsplit('/').next().unwrap_or(&entry.name);
         if has_filter && !referenced.contains(&entry.name) && !referenced.contains(base_name) {
@@ -887,6 +929,22 @@ pub async fn webdav_pull(
             skipped += 1;
             continue;
         }
+        to_download.push(entry);
+    }
+
+    let total_files = 1 + to_download.len();
+    for (idx, entry) in to_download.iter().enumerate() {
+        let current = idx + 2;
+        on_progress(PullProgressEvent {
+            stage: "media".to_string(),
+            current,
+            total: total_files,
+            file_name: entry.name.clone(),
+            message: format!(
+                "共 {} 个文件 · 正在拉取第 {} / {} 个文件…",
+                total_files, current, total_files
+            ),
+        });
         let url = join_url(&server, &format!("{}/media/{}", dir, entry.name));
         if let Some(bytes) = get_bytes(&client, &url, &username, &password).await? {
             let dest = media_dir.join(entry.name.replace('/', std::path::MAIN_SEPARATOR_STR));
@@ -897,6 +955,14 @@ pub async fn webdav_pull(
             downloaded += 1;
         }
     }
+
+    on_progress(PullProgressEvent {
+        stage: "save".to_string(),
+        current: total_files,
+        total: total_files,
+        file_name: project_file::PROJECT_FILE_NAME.to_string(),
+        message: format!("共 {} 个文件拉取完成，正在写入本地工作区…", total_files),
+    });
 
     // 媒体补齐后再原子写入 YRP；旧云端 JSON 在本地统一转换。
     let local_project = workspace.join(project_file::PROJECT_FILE_NAME);

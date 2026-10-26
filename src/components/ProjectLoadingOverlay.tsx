@@ -41,7 +41,7 @@ export default function ProjectLoadingOverlay() {
     >
       <div className="project-loading-inner">
         <div className="project-loading-emblem" aria-hidden="true">
-          <span className="project-loading-seal">纪</span>
+          <img src="/yiranji-logo-512px.png" alt="" className="project-loading-logo" draggable={false} />
         </div>
 
         <div className="project-loading-app">以苒纪</div>
