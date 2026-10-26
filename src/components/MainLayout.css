@@ -701,47 +701,161 @@
 .saveas-loading-overlay {
   position: absolute;
   inset: 0;
-  background-color: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(4px);
+  background-color: var(--color-bg-card);
+  backdrop-filter: blur(8px);
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  z-index: 20;
+  padding: var(--space-6);
+  z-index: 50;
   border-radius: var(--radius-lg);
   animation: saveasFadeIn 0.2s ease;
+  user-select: none;
+  cursor: progress;
 }
 
 [data-theme='dark'] .saveas-loading-overlay {
-  background-color: rgba(28, 25, 23, 0.9);
+  background-color: var(--color-bg-card);
 }
 
-.saveas-spinner {
-  width: 36px;
-  height: 36px;
-  border: 3.5px solid var(--color-border);
-  border-top-color: var(--color-primary);
+.saveas-loading-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(400px, 100%);
+  text-align: center;
+  animation: saveasSlideUp 0.25s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.saveas-loading-emblem {
+  position: relative;
+  width: 68px;
+  height: 68px;
+  margin-bottom: var(--space-4);
+  display: grid;
+  place-items: center;
+}
+
+.saveas-loading-emblem::before {
+  content: '';
+  position: absolute;
+  inset: 0;
   border-radius: 50%;
-  animation: saveasSpin 0.8s linear infinite;
+  border: 1.5px dashed var(--color-accent-light);
+  opacity: 0.55;
+  animation: saveas-loading-rotate 9s linear infinite;
 }
 
-@keyframes saveasSpin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.saveas-loading-emblem::after {
+  content: '';
+  position: absolute;
+  inset: 9px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 26%, oklch(70% 0.16 25), var(--color-accent) 72%);
+  box-shadow: 0 8px 22px oklch(58% 0.18 25 / 0.28);
 }
 
-.saveas-loading-text {
-  font-size: var(--text-base);
+.saveas-loading-seal {
+  position: relative;
+  z-index: 1;
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--color-text-inverse);
+  line-height: 1;
+}
+
+.saveas-loading-title {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
   font-weight: 600;
+  letter-spacing: 0.06em;
   color: var(--color-text-primary);
 }
 
-.saveas-loading-hint {
+.saveas-loading-file {
+  max-width: 100%;
+  margin: 0 0 var(--space-4);
+  padding: 3px 14px;
   font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  background-color: var(--color-bg-input);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saveas-loading-stage-line {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 22px;
+  margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.saveas-loading-stage {
+  transition: color 160ms ease;
+}
+
+.saveas-loading-track {
+  position: relative;
+  width: 220px;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-border-light);
+  overflow: hidden;
+}
+
+.saveas-loading-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--color-accent-light) 35%,
+    var(--color-accent) 65%,
+    transparent 100%
+  );
+  animation: saveas-loading-sweep 1.4s ease-in-out infinite;
+}
+
+.saveas-loading-hint {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-xs);
+  line-height: 1.6;
   color: var(--color-text-tertiary);
+  letter-spacing: 0.02em;
+}
+
+@keyframes saveas-loading-rotate {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes saveas-loading-sweep {
+  0% { transform: translateX(-105%); }
+  55% { transform: translateX(80%); }
+  100% { transform: translateX(255%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .saveas-loading-emblem::before,
+  .saveas-loading-bar {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+  .saveas-loading-bar {
+    width: 100%;
+    opacity: 0.45;
+    transform: none;
+  }
 }

@@ -167,7 +167,7 @@ interface FamilyStore {
   clearCustomLayout: (mode?: TreeLayoutMode) => void;
   closeProject: () => void;
   saveCurrentProject: () => Promise<void>;
-  saveProjectAs: () => Promise<boolean>;
+  saveProjectAs: (onProgress?: (stageText: string, fileName?: string) => void) => Promise<boolean>;
   /** 档案已整体迁移到新的工作区目录后，切换当前指向并刷新最近列表 */
   relocateProject: (newWorkspacePath: string) => Promise<void>;
   /** 云同步：上传当前档案（只补传云端缺失的媒体） */
@@ -570,7 +570,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     }
   },
 
-  saveProjectAs: async () => {
+  saveProjectAs: async (onProgress?: (stageText: string, fileName?: string) => void) => {
     const { project, currentFilePath, projectPassword } = get();
     if (!project) return false;
 
@@ -596,21 +596,33 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     }
 
     // 桌面版：弹出对话框让用户指定打包好的 YRJ 文件名及保存位置
+    onProgress?.('请在系统弹窗中选择保存位置并确认…', defaultName);
     const path = await selectFilePathForSave(defaultName);
     if (!path) return false;
 
+    const parts = path.replace(/[\\/]+$/, '').split(/[\\/]/);
+    const exportFileName = parts[parts.length - 1] || defaultName;
+
     try {
       if (currentFilePath) {
+        onProgress?.('正在保存当前工作区工程数据…', exportFileName);
         // 先确保工作区 project.yrp 处于最新状态
         await saveProjectFile(currentFilePath, JSON.stringify(updated, null, 2));
         // 将整个工作区目录（包括 project.yrp 与 media/ 照片）一并进行 ZIP 压缩加密打包导出为单文件
+        onProgress?.(
+          projectPassword ? '正在压缩并加密档案与媒体文件…' : '正在压缩并打包档案与媒体文件…',
+          exportFileName
+        );
         await packToYrj(currentFilePath, path, projectPassword || undefined);
       } else {
+        onProgress?.('正在打包 YRJ 归档数据…', exportFileName);
         // 档案还没落地到工作区（极少见）：直接用同一套容器格式写单文件
         const { buildYrjBytes, bytesToBase64 } = await import('../utils/yrjBrowser');
         const bytes = await buildYrjBytes(updated, projectPassword || undefined);
+        onProgress?.('正在写入 YRJ 文件…', exportFileName);
         await writeBinaryFile(path, bytesToBase64(bytes));
       }
+      onProgress?.('YRJ 档案打包导出完成！', exportFileName);
 
       set({
         project: updated,

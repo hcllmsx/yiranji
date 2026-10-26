@@ -10,7 +10,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
-#[tauri::command]
+#[tauri::command(async)]
 fn select_yrj_file_path_for_save(default_name: String) -> Result<Option<String>, String> {
     let file = rfd::FileDialog::new()
         .add_filter("以苒纪工程文件 (*.yrj)", &["yrj"])
@@ -674,7 +674,7 @@ fn delete_project_workspace_from_disk(path: String) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn pack_to_yrj(
     workspace_path: String,
     dest_yrj_path: String,
