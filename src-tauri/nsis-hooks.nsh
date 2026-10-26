@@ -1,7 +1,7 @@
 ; NSIS 安装器自定义 hook
 ; 覆盖安装窗口标题：从默认的 "以苒纪 Setup" 改为 "以苒纪 v26.7.3 Setup"
 ; 版本号由 scripts/sync-version.mjs 自动同步
-Caption "以苒纪 v26.10.25"
+Caption "以苒纪 v26.10.26"
 
 ; 扩展名、ProgID 和打开命令由 Tauri fileAssociations 统一注册；
 ; 此处只覆盖各 ProgID 的 DefaultIcon，避免写入重复的关联或卸载逻辑。

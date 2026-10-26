@@ -1092,6 +1092,7 @@ export default function PersonEditPage() {
     // 计算最终要写入的父母 ID 链
     let finalFatherId = fatherId;
     let finalMotherId = motherId;
+    let generatedVirtualParents = false;
     // 只保留至少填了一方的组，空白槽位归一为 undefined
     let finalAdoptiveGroups: AdoptiveParentGroup[] = adoptiveGroups
       .map((group) => ({
@@ -1173,6 +1174,7 @@ export default function PersonEditPage() {
 
         finalFatherId = genFatherId;
         finalMotherId = genMotherId;
+        generatedVirtualParents = true;
       }
     }
 
@@ -1223,18 +1225,16 @@ export default function PersonEditPage() {
 
     // 后续手足及父母子嗣属性双向同步
     if (project) {
-      // 1. 同步将兄弟姐妹的生父生母设为跟本人一致；养父母按各自实际收养关系独立维护
-      // 仅在本人设置了生父母时才同步给手足；本人取消生父母时不影响手足已有的生父母关系
-      for (const sibId of siblingIds) {
-        const sib = project.persons[sibId];
-        if (sib) {
-          if (finalFatherId) {
+      // 1. 生父母按人员独立维护，修改本人父母时不覆盖手足的父母关系
+      // 仅在自动生成占位父母时同步给原本也无父母的手足，以建立所选手足关系
+      if (generatedVirtualParents) {
+        for (const sibId of siblingIds) {
+          const sib = project.persons[sibId];
+          if (sib) {
             sib.relations.father = finalFatherId;
-          }
-          if (finalMotherId) {
             sib.relations.mother = finalMotherId;
+            await updatePerson(sibId, { relations: sib.relations });
           }
-          await updatePerson(sibId, { relations: sib.relations });
         }
       }
 
@@ -1248,8 +1248,11 @@ export default function PersonEditPage() {
         }
       }
 
-      // 3. 同步更新生父母节点的 children 列表
-      const allChildrenIds = [currentPersonId, ...siblingIds];
+      // 3. 同步更新生父母节点的 children 列表；普通编辑只维护本人
+      // 自动生成的占位父母则需要一次性登记本次关联的全部手足
+      const biologicalChildIds = generatedVirtualParents
+        ? [currentPersonId, ...siblingIds]
+        : [currentPersonId];
 
       const updateParentChildren = async (
         parentId: string,
@@ -1292,8 +1295,8 @@ export default function PersonEditPage() {
         await removeFromParentChildren(origMotherId);
       }
 
-      if (finalFatherId) await updateParentChildren(finalFatherId, allChildrenIds, 'biological');
-      if (finalMotherId) await updateParentChildren(finalMotherId, allChildrenIds, 'biological');
+      if (finalFatherId) await updateParentChildren(finalFatherId, biologicalChildIds, 'biological');
+      if (finalMotherId) await updateParentChildren(finalMotherId, biologicalChildIds, 'biological');
 
       // 3b. 同步养父母节点的 children：只记本人，不对手足扩散（养父母不一定收养全家）
       const finalAdoptiveParentIds = finalAdoptiveGroups
@@ -1562,8 +1565,8 @@ export default function PersonEditPage() {
           ...sibObj,
           relations: {
             ...sibObj.relations,
-            father: fatherId || undefined,
-            mother: motherId || undefined,
+            father: sibObj.relations.father || fatherId || undefined,
+            mother: sibObj.relations.mother || motherId || undefined,
           }
         };
       }
