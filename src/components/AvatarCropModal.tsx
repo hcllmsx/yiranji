@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { lockBodyScroll } from '../utils/bodyScrollLock';
-import { convertLocalSrc } from '../utils/tauri';
+import { isTauri, convertLocalSrc } from '../utils/tauri';
 import './AvatarCropModal.css';
 
 interface AvatarCropModalProps {
@@ -30,7 +30,7 @@ interface CropState {
 }
 
 export default function AvatarCropModal({ imageSrc, onClose, onSave, initTab = 'circle', syncSourceImage }: AvatarCropModalProps) {
-  const imgRef = useRef<HTMLImageElement | null>(null);
+  const sourceImageRef = useRef<HTMLImageElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // 当前进行裁剪的预览图 (可以是带协议的物理图、Base64 或带协议的同步图)
@@ -63,11 +63,18 @@ export default function AvatarCropModal({ imageSrc, onClose, onSave, initTab = '
 
   // 加载图片得到原始尺寸，并初始化两个裁剪的 fitScale
   useEffect(() => {
+    let cancelled = false;
+    sourceImageRef.current = null;
+    setNaturalSize({ w: 0, h: 0 });
+
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
+      if (cancelled) return;
       const w = img.naturalWidth;
       const h = img.naturalHeight;
+      // Canvas 预览直接复用已解码的图片，避免首次渲染时左侧 DOM 图片尚未挂载
+      sourceImageRef.current = img;
       setNaturalSize({ w, h });
       setCircleState({
         offset: { x: 0, y: 0 },
@@ -81,6 +88,10 @@ export default function AvatarCropModal({ imageSrc, onClose, onSave, initTab = '
       });
     };
     img.src = currentImageSrc;
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentImageSrc]);
 
   // ESC 关闭弹窗
@@ -175,7 +186,8 @@ export default function AvatarCropModal({ imageSrc, onClose, onSave, initTab = '
 
   // 生成圆形裁剪图（透明背景 PNG）
   const generateCircleCrop = useCallback((): string => {
-    if (!naturalSize.w || !naturalSize.h) return '';
+    const sourceImage = sourceImageRef.current;
+    if (!sourceImage || !naturalSize.w || !naturalSize.h) return '';
     const scale = circleState.fitScale * circleState.zoom;
     const canvas = document.createElement('canvas');
     canvas.width = CIRCLE_OUTPUT;
@@ -197,26 +209,25 @@ export default function AvatarCropModal({ imageSrc, onClose, onSave, initTab = '
     ctx.closePath();
     ctx.clip();
 
-    if (imgRef.current) {
-      ctx.drawImage(
-        imgRef.current,
-        sourceX,
-        sourceY,
-        sourceSize,
-        sourceSize,
-        0,
-        0,
-        CIRCLE_OUTPUT,
-        CIRCLE_OUTPUT
-      );
-    }
+    ctx.drawImage(
+      sourceImage,
+      sourceX,
+      sourceY,
+      sourceSize,
+      sourceSize,
+      0,
+      0,
+      CIRCLE_OUTPUT,
+      CIRCLE_OUTPUT
+    );
     ctx.restore();
     return canvas.toDataURL('image/png');
   }, [naturalSize, circleState]);
 
   // 生成矩形裁剪图（JPG）
   const generateRectCrop = useCallback((): string => {
-    if (!naturalSize.w || !naturalSize.h) return '';
+    const sourceImage = sourceImageRef.current;
+    if (!sourceImage || !naturalSize.w || !naturalSize.h) return '';
     const scale = rectState.fitScale * rectState.zoom;
     const canvas = document.createElement('canvas');
     canvas.width = RECT_OUTPUT_W;
@@ -233,19 +244,17 @@ export default function AvatarCropModal({ imageSrc, onClose, onSave, initTab = '
     const sourceW = RECT_CONTAINER_W / scale;
     const sourceH = RECT_CONTAINER_H / scale;
 
-    if (imgRef.current) {
-      ctx.drawImage(
-        imgRef.current,
-        sourceX,
-        sourceY,
-        sourceW,
-        sourceH,
-        0,
-        0,
-        RECT_OUTPUT_W,
-        RECT_OUTPUT_H
-      );
-    }
+    ctx.drawImage(
+      sourceImage,
+      sourceX,
+      sourceY,
+      sourceW,
+      sourceH,
+      0,
+      0,
+      RECT_OUTPUT_W,
+      RECT_OUTPUT_H
+    );
     return canvas.toDataURL('image/jpeg', 0.98);
   }, [naturalSize, rectState]);
 
@@ -326,7 +335,6 @@ export default function AvatarCropModal({ imageSrc, onClose, onSave, initTab = '
             >
               {naturalSize.w > 0 && (
                 <img
-                  ref={imgRef}
                   src={currentImageSrc}
                   alt="待裁剪"
                   className="avatar-crop-image"
@@ -412,9 +420,9 @@ export default function AvatarCropModal({ imageSrc, onClose, onSave, initTab = '
             type="button"
             className="btn btn-secondary btn-sm"
             onClick={handleLocalUploadClick}
-            title="从本地电脑上传一张新照片"
+            title="重新从本地电脑选择一张照片"
           >
-            📂 选择本地照片
+            📂 重选本地照片
           </button>
 
           {syncSourceImage && (
@@ -432,7 +440,13 @@ export default function AvatarCropModal({ imageSrc, onClose, onSave, initTab = '
           <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft: syncSourceImage ? '0' : 'auto' }} onClick={onClose}>
             取消
           </button>
-          <button type="button" className="btn btn-primary btn-sm" onClick={handleSave}>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={!isTauri() ? undefined : handleSave}
+            disabled={!isTauri()}
+            title={!isTauri() ? '网页版仅供界面预览，不支持保存头像，请使用桌面版客户端' : undefined}
+          >
             确认保存
           </button>
         </div>

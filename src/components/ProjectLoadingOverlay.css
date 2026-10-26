@@ -1,0 +1,202 @@
+/* 全屏「载入档案」画面 */
+
+.project-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  background-color: var(--color-bg);
+  cursor: progress;
+  user-select: none;
+  animation: project-loading-fade-in 160ms ease;
+}
+
+/* 与欢迎页一致的角落装饰 */
+.project-loading::before {
+  content: '纪';
+  position: absolute;
+  right: var(--space-8);
+  top: var(--space-8);
+  font-family: var(--font-display);
+  font-size: 8rem;
+  line-height: 1;
+  color: var(--color-accent);
+  opacity: 0.04;
+  pointer-events: none;
+}
+
+.project-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 85% 10%, oklch(58% 0.18 25 / 0.05) 0%, transparent 55%),
+    radial-gradient(circle at 10% 90%, oklch(58% 0.18 25 / 0.04) 0%, transparent 55%);
+}
+
+.project-loading-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(380px, 100%);
+  text-align: center;
+  animation: project-loading-rise 320ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.project-loading-emblem {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  margin-bottom: var(--space-6);
+  display: grid;
+  place-items: center;
+}
+
+.project-loading-emblem::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px dashed var(--color-accent-light);
+  opacity: 0.5;
+  animation: project-loading-rotate 9s linear infinite;
+}
+
+.project-loading-logo {
+  position: relative;
+  z-index: 1;
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 18px oklch(58% 0.18 25 / 0.22));
+}
+
+.project-loading-app {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  letter-spacing: 0.28em;
+  /* 字距会额外撑出一截空宽，向左补偿保证视觉居中 */
+  text-indent: 0.28em;
+  color: var(--color-accent);
+  margin-bottom: var(--space-2);
+}
+
+.project-loading-title {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--color-text-primary);
+}
+
+.project-loading-file {
+  max-width: 100%;
+  margin: 0 0 var(--space-6);
+  padding: 4px 12px;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  background-color: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-loading-stage-line {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 22px;
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  letter-spacing: 0.04em;
+}
+
+.project-loading-stage {
+  transition: color 160ms ease;
+}
+
+.project-loading-track {
+  position: relative;
+  width: 220px;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-border-light);
+  overflow: hidden;
+}
+
+.project-loading-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--color-accent-light) 35%,
+    var(--color-accent) 65%,
+    transparent 100%
+  );
+  animation: project-loading-sweep 1.4s ease-in-out infinite;
+}
+
+.project-loading-hint {
+  margin: var(--space-5) 0 0;
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--color-text-tertiary);
+  letter-spacing: 0.02em;
+}
+
+@keyframes project-loading-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes project-loading-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes project-loading-rotate {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes project-loading-sweep {
+  0% { transform: translateX(-105%); }
+  55% { transform: translateX(80%); }
+  100% { transform: translateX(255%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-loading,
+  .project-loading-inner,
+  .project-loading-emblem::before,
+  .project-loading-bar {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+
+  .project-loading-bar {
+    width: 100%;
+    opacity: 0.45;
+    transform: none;
+  }
+}

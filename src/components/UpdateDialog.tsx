@@ -1,15 +1,42 @@
+import { useEffect, useState } from 'react';
 import { openUrl } from '../utils/tauri';
-import { RELEASES_URL } from '../utils/updateChecker';
+import { RELEASES_URL, fetchReleaseNotes, type ReleaseNotes } from '../utils/updateChecker';
 import { useUpdateStore } from '../store/updateStore';
+import ReleaseNotesView from './ReleaseNotesView';
 import './UpdateDialog.css';
 
 // 以苒纪 — 发现新版本弹窗
 //
 // 挂载于 App 根层，由 updateStore 控制显隐；
-// 引导用户前往 GitHub Releases 页面下载最新版。
+// 打开后按同源策略拉取 release-notes.json 展示本版更新内容，
+// 拉取失败时回退为通用说明，不阻塞更新提示。
 
 export default function UpdateDialog() {
-  const { open, latestVersion, closeUpdateDialog } = useUpdateStore();
+  const { open, latestVersion, sourceIndex, closeUpdateDialog } = useUpdateStore();
+  const [notes, setNotes] = useState<ReleaseNotes | null>(null);
+  const [notesLoading, setNotesLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+    setNotes(null);
+    setNotesLoading(true);
+
+    fetchReleaseNotes(latestVersion, sourceIndex)
+      .then((result) => {
+        if (cancelled) return;
+        setNotes(result);
+        setNotesLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) setNotesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, latestVersion, sourceIndex]);
 
   if (!open) return null;
 
@@ -28,9 +55,15 @@ export default function UpdateDialog() {
           <span className="update-version-arrow">→</span>
           <span className="update-version-old">当前 v{__APP_VERSION__}</span>
         </div>
-        <p className="update-desc">
-          新版本包含功能改进与问题修复，建议前往 GitHub Releases 页面下载最新版安装包。
-        </p>
+        {notesLoading ? (
+          <p className="update-desc">正在获取更新内容…</p>
+        ) : notes ? (
+          <ReleaseNotesView sections={notes.sections} />
+        ) : (
+          <p className="update-desc">
+            新版本包含功能改进与问题修复，建议前往 GitHub Releases 页面查看更新说明，并按页面指引下载最新版。
+          </p>
+        )}
         <div className="update-buttons">
           <button type="button" className="btn btn-secondary btn-sm" onClick={closeUpdateDialog}>
             下次再说

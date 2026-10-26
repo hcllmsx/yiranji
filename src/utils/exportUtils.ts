@@ -65,17 +65,27 @@ export interface TreeBounds {
  * 该方式与 React 组件状态完全解耦，天然包含用户手动拖拽后的自定义布局。
  */
 export function getTreeDomBounds(viewport: HTMLElement): TreeBounds {
-  const nodeEls = Array.from(viewport.querySelectorAll<HTMLElement>('.react-flow__node'));
-  if (nodeEls.length === 0) {
+  const allNodeEls = Array.from(viewport.querySelectorAll<HTMLElement>('.react-flow__node'));
+  if (allNodeEls.length === 0) {
     throw new Error('画布上没有人员节点，无法导出');
   }
+
+  // 若未强制包含占位成员，则忽略被标记为 hidden 的占位节点，防止导出包围盒顶部/边缘留白
+  const isForceInclude = viewport.classList.contains('export-include-placeholders');
+  const nodeEls = isForceInclude
+    ? allNodeEls
+    : allNodeEls.filter((el) => {
+        const inner = el.querySelector('.tree-person-node');
+        return !inner || !inner.classList.contains('placeholder-hidden');
+      });
+  const targetEls = nodeEls.length > 0 ? nodeEls : allNodeEls;
 
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
 
-  nodeEls.forEach((el) => {
+  targetEls.forEach((el) => {
     const m = new DOMMatrix(getComputedStyle(el).transform === 'none' ? '' : getComputedStyle(el).transform);
     const w = el.offsetWidth;
     const h = el.offsetHeight;
@@ -162,8 +172,57 @@ export function textToBase64(text: string): string {
 
 export type SaveResult = 'saved' | 'cancelled';
 
+/** 按扩展名推断导出文件的 MIME 类型（浏览器下载时用） */
+function mimeFromFileName(fileName: string): string {
+  const ext = fileName.slice(fileName.lastIndexOf('.') + 1).toLowerCase();
+  switch (ext) {
+    case 'png':
+      return 'image/png';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'html':
+    case 'htm':
+      return 'text/html;charset=utf-8';
+    case 'json':
+      return 'application/json;charset=utf-8';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
+/** base64 字符串 → Blob（去掉可能存在的 data URL 前缀） */
+export function base64ToBlob(base64Data: string, mime: string): Blob {
+  const clean = base64Data.includes(',')
+    ? base64Data.slice(base64Data.indexOf(',') + 1)
+    : base64Data;
+  const binary = atob(clean);
+  const chunk = 0x8000;
+  const parts: Uint8Array[] = [];
+  for (let i = 0; i < binary.length; i += chunk) {
+    const slice = binary.slice(i, i + chunk);
+    const bytes = new Uint8Array(slice.length);
+    for (let j = 0; j < slice.length; j++) bytes[j] = slice.charCodeAt(j);
+    parts.push(bytes);
+  }
+  return new Blob(parts as unknown as BlobPart[], { type: mime });
+}
+
+/** 触发浏览器下载 */
+export function downloadBlob(blob: Blob, fileName: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
 /**
- * 弹出原生保存对话框并将 base64 二进制写入指定路径。
+ * 导出文件：桌面版弹原生保存对话框，网页版直接下载到浏览器「下载」目录。
  * 用户取消时返回 'cancelled'。
  */
 export async function saveExportFile(
@@ -173,7 +232,9 @@ export async function saveExportFile(
   base64Data: string
 ): Promise<SaveResult> {
   if (!isTauri()) {
-    throw new Error('导出功能仅在桌面应用环境下可用');
+    // 网页版兜底：浏览器下载（图片 / HTML / JSON 都走这里）
+    downloadBlob(base64ToBlob(base64Data, mimeFromFileName(defaultName)), defaultName);
+    return 'saved';
   }
 
   const path = await selectExportFilePath(defaultName, filterName, extensions);

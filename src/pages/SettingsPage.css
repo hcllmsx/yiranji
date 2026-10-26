@@ -1,13 +1,110 @@
-/* 设置页面样式 */
+﻿/* 设置页面样式 */
 
 .settings-page {
-  padding: var(--space-8);
-  max-width: 800px;
+  padding: var(--space-6) var(--space-8);
+  max-width: 1200px;
   margin: 0 auto;
   animation: fadeIn var(--transition-normal) ease;
+  min-height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 双栏布局容器 */
+.settings-layout {
+  display: flex;
+  gap: var(--space-6);
+  align-items: flex-start;
+  flex: 1;
+}
+
+/* 左侧分类导航菜单 */
+.settings-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  background-color: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2);
+  box-shadow: var(--shadow-sm);
+  position: sticky;
+  top: var(--space-6);
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  width: 100%;
+}
+
+.settings-nav-item:hover {
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.settings-nav-item.active {
+  background-color: var(--color-accent-lighter);
+  color: var(--color-accent);
+  border-color: var(--color-accent-light);
+  font-weight: 600;
+}
+
+.settings-nav-icon {
+  font-size: 1.15rem;
+  width: 22px;
+  display: inline-flex;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.settings-nav-label {
+  flex: 1;
+  white-space: nowrap;
+}
+
+/* 右侧配置面板 */
+.settings-content {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 860px) {
+  .settings-layout {
+    flex-direction: column;
+  }
+  .settings-sidebar {
+    width: 100%;
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    padding: var(--space-2);
+    gap: var(--space-2);
+  }
+  .settings-nav-item {
+    width: auto;
+    white-space: nowrap;
+  }
 }
 
 .settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: var(--space-6);
 }
 
@@ -16,6 +113,13 @@
   font-size: var(--text-2xl);
   color: var(--color-text-primary);
   margin: 0;
+}
+
+.settings-header-save-btn {
+  padding: 8px 22px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  box-shadow: var(--shadow-sm);
 }
 
 .settings-form {
@@ -42,11 +146,25 @@
   font-weight: 500;
 }
 
-.password-status-bar {
-  margin-bottom: var(--space-4);
+/* 标题行带上右侧信息（如当前家谱数据版本） */
+.settings-section-title--with-badge {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
 }
 
-.status-container {
+.settings-data-version {
+  font-family: var(--font-body, inherit);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+.password-status-bar {
+  margin-bottom: var(--space-4);
+}.status-container {
   display: flex;
   align-items: center;
   gap: var(--space-4);
@@ -303,4 +421,467 @@
   margin: var(--space-2) 0 0 0;
   font-size: var(--text-xs);
   color: var(--color-danger, #ef4444);
+}
+
+/* ==================== 档案存储：路径展示 ==================== */
+.path-display {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg-input);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  word-break: break-all;
+  user-select: text;
+}
+
+.path-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+}
+
+/* ==================== 多设备同步 ==================== */
+
+.sync-provider-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--color-border-light);
+  margin-bottom: 18px;
+}
+
+.sync-provider-tab {
+  padding: 8px 18px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: -1px;
+}
+
+.sync-provider-tab:hover {
+  color: var(--color-text-primary);
+}
+
+.sync-provider-tab.active {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+  font-weight: 600;
+}
+
+.sync-others-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 20px;
+  color: var(--color-text-tertiary);
+  font-size: 13.5px;
+  background-color: var(--color-bg-card);
+  border: 1px dashed var(--color-border-light);
+  border-radius: var(--radius-md);
+  margin: 10px 0 16px;
+}
+
+.sync-server-root-row {
+  display: grid;
+  grid-template-columns: 3fr 1fr;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.sync-cloud-location-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  border-top: 1px solid var(--color-border-light);
+  border-bottom: 1px solid var(--color-border-light);
+  border-left: none;
+  border-right: none;
+  border-radius: 0;
+  padding: 6px 0;
+  margin: 12px 0 16px;
+}
+
+.sync-cloud-location-box strong {
+  color: var(--color-accent);
+  font-family: var(--font-mono, monospace);
+  font-weight: 600;
+}
+
+.sync-account-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.sync-status-card {
+  margin: 14px 0;
+  background-color: var(--color-bg-input);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+}
+
+.sync-status-info {
+  flex: 1;
+  padding: 12px 14px;
+  min-width: 0;
+}
+
+.sync-status-gradient-badge {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 24px 0 60px;
+  min-width: 260px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  user-select: none;
+  border: none;
+}
+
+/* 从左到右平滑延展渐变，无任何左边框竖线，贴合右边缘 */
+.sync-status-gradient-badge.connected {
+  background: linear-gradient(to right, transparent 0%, rgba(22, 163, 74, 0.03) 25%, rgba(22, 163, 74, 0.18) 100%);
+  color: #15803d;
+}
+
+.sync-status-gradient-badge.error {
+  background: linear-gradient(to right, transparent 0%, rgba(220, 38, 38, 0.03) 25%, rgba(220, 38, 38, 0.18) 100%);
+  color: #b91c1c;
+}
+
+.sync-status-gradient-badge.untested {
+  background: linear-gradient(to right, transparent 0%, rgba(156, 163, 175, 0.02) 25%, rgba(156, 163, 175, 0.12) 100%);
+  color: var(--color-text-tertiary);
+}
+
+.sync-status-line {
+  display: flex;
+  gap: 12px;
+  font-size: 12.5px;
+  line-height: 1.9;
+}
+
+.sync-status-key {
+  flex: none;
+  width: 64px;
+  color: var(--color-text-tertiary);
+}
+
+.sync-status-value {
+  color: var(--color-text-primary);
+  word-break: break-all;
+}
+
+.sync-status-warn {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--color-warning, #c2752e);
+}
+
+.sync-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+
+.btn-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: btn-spin 0.6s linear infinite;
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
+}
+
+.sync-switch-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.sync-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+.sync-switch-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.sync-switch-desc {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  margin-top: 2px;
+}
+
+@media (max-width: 720px) {
+  .sync-server-root-row,
+  .sync-account-row {
+    grid-template-columns: 1fr;
+  }
+}
+/* ===== 家谱树显示模式选择 ===== */
+.tree-mode-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.tree-mode-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.tree-mode-option:hover {
+  border-color: var(--color-border);
+}
+
+.tree-mode-option.is-active {
+  border-color: var(--color-primary);
+  background-color: var(--color-bg-card);
+}
+
+.tree-mode-option input[type='radio'] {
+  margin-top: 3px;
+  accent-color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.tree-mode-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tree-mode-name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.tree-mode-desc {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-text-tertiary);
+}
+
+
+/* ===== iOS 胶囊滑块开关样式 ===== */
+.ios-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.ios-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.ios-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background-color: var(--color-border);
+  transition: background-color 0.25s ease;
+  border-radius: 24px;
+}
+
+.ios-slider:before {
+  position: absolute;
+  content: '';
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: #ffffff;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.ios-switch input:checked + .ios-slider {
+  background-color: var(--color-accent);
+}
+
+.ios-switch input:checked + .ios-slider:before {
+  transform: translateX(20px);
+}
+
+.ios-switch:focus-within .ios-slider {
+  box-shadow: 0 0 0 2px var(--color-accent-lighter);
+}
+
+/* ===== 横向通用开关行 ===== */
+.toggle-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.toggle-setting-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.toggle-setting-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.toggle-setting-desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--color-text-tertiary);
+}
+
+/* ===== 档案存储：操作按钮与内联路径 ===== */
+.path-actions--between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.path-actions-left {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.path-input-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.path-input-inline .path-display {
+  flex: 1;
+  min-width: 0;
+}
+
+.path-inline-btn {
+  padding: 8px 12px;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.path-inline-clear-btn {
+  padding: 6px 10px;
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}
+
+.path-inline-clear-btn:hover {
+  color: var(--color-danger, #ef4444);
+}
+
+/* ===== 纯净页脚（非卡片、无外框） ===== */
+.settings-about-footer {
+  margin-top: auto;
+  padding: var(--space-8) 0 var(--space-4);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.settings-footer-update-line,
+.settings-footer-links-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.footer-dot {
+  opacity: 0.5;
+}
+
+.footer-link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.15s ease, text-decoration 0.15s ease;
+}
+
+.footer-link-btn:hover:not(:disabled) {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+.footer-link-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.settings-footer-copyright {
+  margin-top: 4px;
+  color: var(--color-text-tertiary);
+  opacity: 0.85;
 }

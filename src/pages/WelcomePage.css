@@ -5,14 +5,14 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  /* 底部额外留出版本号所占的空间，避免最近打开列表等内容压到版本号文字上 */
-  padding: var(--space-8) var(--space-8) calc(var(--space-8) + var(--space-6));
+  /* 注意：这里不能用 justify-content: center。
+     当最近打开记录较多、内容高于视口时，居中的 flex 容器会把内容顶部顶到滚动区之外，
+     表现为「以苒纪」标题被裁掉且怎么上滚都看不到（顶部溢出不可见且不可滚动）。
+     纵向居中改由 .welcome-content 的 auto margin 完成，空间不足时会自动归零。 */
+  /* 底部额外留出版本号空间 + 视觉上略微上移：上下不等距 padding 让内容重心偏上 */
+  padding: var(--space-8) var(--space-8) calc(var(--space-8) + var(--space-6) + 6vh);
   background-color: var(--color-bg);
   position: relative;
-  /* 高缩放下内容会超高，允许纵向滚动而不是直接裁掉 */
-  overflow-x: hidden;
-  overflow-y: auto;
 }
 
 /* 背景装饰（固定定位，避免为页面制造额外的滚动区域） */
@@ -42,13 +42,15 @@
 
 .welcome-content {
   text-align: center;
-  max-width: 600px;
+  width: 100%;
+  max-width: 1080px;
   animation: slideUp 600ms ease;
   position: relative;
   z-index: 1;
   /* 不随窗口变小而被压缩，保证高缩放下内容完整可滚动查看 */
   flex-shrink: 0;
-  margin-top: -5vh; /* 整体往上移一些，改善视觉分布 */
+  /* auto margin 纵向居中：空间充足时居中，内容超高时归零，从顶部正常开始、可完整滚动 */
+  margin-block: auto;
   user-select: none; /* 避免拖选页脚版本号时连带选中上方内容 */
 }
 
@@ -131,11 +133,35 @@
   transform: translateY(-1px);
 }
 
+.welcome-btn-open:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.welcome-btn-open:disabled:hover {
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+  transform: none;
+}
+
 /* 最近项目 */
 .welcome-recent {
   width: 100%;
-  max-width: 480px;
+  max-width: 520px;
+  margin-inline: auto;
   animation: fadeIn 800ms ease 200ms both;
+}
+
+/* 记录变多时按两列 / 三列铺开，避免在中间一条长龙似的排下去把首屏撑出滚动 */
+.welcome-recent--cols-2 {
+  max-width: 760px;
+}
+
+.welcome-recent--cols-3 {
+  max-width: 1080px;
 }
 
 .welcome-recent-title {
@@ -148,9 +174,17 @@
 }
 
 .welcome-recent-list {
+  display: grid;
+  /* 窗口变窄时自动减少列数，窄到放不下两列就回到单列 */
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-2) var(--space-3);
+  align-items: stretch;
+}
+
+.welcome-recent-item-container {
+  position: relative;
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  align-items: stretch;
 }
 
 .welcome-recent-item {
@@ -158,6 +192,8 @@
   align-items: center;
   gap: var(--space-4);
   padding: var(--space-4) var(--space-5);
+  /* 右侧给悬浮操作按钮留出位置 */
+  padding-right: 48px;
   background-color: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-md);
@@ -165,6 +201,7 @@
   transition: all var(--transition-normal);
   text-align: left;
   width: 100%;
+  flex: 1;
 }
 
 /* 最近项目项悬浮样式已转移至 Container 统领 */
@@ -198,6 +235,12 @@
 .welcome-recent-item-date {
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);
+  /* 多列排布时卡片变窄，路径最多显示两行，保持每行卡片高度整齐（完整路径见悬浮提示） */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .welcome-recent-item-container {
@@ -211,6 +254,57 @@
 .welcome-recent-item-container:hover .welcome-recent-item {
   box-shadow: var(--shadow-hover);
   border-color: var(--color-accent-light);
+}
+
+.welcome-recent-actions {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+  transition: all var(--transition-fast) ease;
+}
+
+.welcome-recent-item-container:hover .welcome-recent-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.welcome-recent-action-btn {
+  background: none;
+  border: none;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast) ease;
+  opacity: 0.65;
+  padding: 0;
+}
+
+.welcome-recent-action-btn:hover {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+.welcome-recent-remove-btn:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-hover, rgba(0, 0, 0, 0.06));
+}
+
+.welcome-recent-disk-delete-btn:hover {
+  color: #ff3b30 !important;
+  background-color: rgba(255, 59, 48, 0.12);
 }
 
 .welcome-recent-delete-btn {
@@ -227,7 +321,7 @@
 .welcome-recent-delete-btn:hover {
   opacity: 1 !important;
   transform: scale(1.2);
-  color: #ff3b30 !important; /* 精美的系统红色 */
+  color: #ff3b30 !important;
 }
 
 /* 版本信息 */
@@ -266,4 +360,41 @@
   pointer-events: none;
   user-select: none;
   line-height: 1;
+}
+
+/* 模态框右上角圆圈叉叉关闭按钮 */
+.modal-close-icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  color: var(--color-text-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.modal-close-icon-btn:hover {
+  color: var(--color-danger, #dc2626);
+  background-color: rgba(220, 38, 38, 0.08);
+}
+
+/* 模态框底部居中纯文字按钮（无边框背景） */
+.welcome-cloud-text-btn {
+  background: none;
+  border: none;
+  padding: 6px 12px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.15s ease;
+}
+
+.welcome-cloud-text-btn:hover {
+  color: var(--color-accent);
 }

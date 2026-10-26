@@ -11,17 +11,42 @@ import type {
 import {
   createDefaultPerson,
   createDefaultMeta as makeDefaultMeta,
+  createAdoptiveGroupId,
+  removePersonFromAdoptiveGroups,
 } from '../types';
 import { sha256, generateAnonymizedNames } from '../utils';
+import type { TreeLayoutMode } from '../utils/appPrefs';
 import {
   isTauri,
-  saveYrjFile,
   selectFilePathForSave,
-  saveProjectJson,
+  saveProjectFile as invokeSaveProjectFile,
+  backupProjectFile,
   unpackYrj,
-  loadProjectJson,
+  loadProjectFile,
   packToYrj,
+  createUniqueProjectWorkspace,
+  resolveWorkspaceDir,
+  writeBinaryFile,
+  webdavPush,
+  webdavPull,
+  webdavRemoteMeta,
+  type RemoteSyncMeta,
+  type SyncPushReport,
+  type SyncPullReport,
 } from '../utils/tauri';
+import { rebaseMediaPathsToWorkspace } from '../utils/projectPortable';
+import { getSyncSettings, isSyncConfigured, remoteDirFor, ensureSyncKey } from '../utils/cloudSync';
+import { saveRecentProjectsList } from '../utils/appSettings';
+import { migrateProjectData, type MigrationReport } from '../utils/dataMigration';
+import {
+  useProjectLoadingStore,
+  type ProjectLoadStage,
+} from './projectLoadingStore';
+
+/** 更新全屏载入画面的阶段文案（未显示时自动忽略） */
+function setLoadStage(stage: ProjectLoadStage) {
+  useProjectLoadingStore.getState().setStage(stage);
+}
 
 // ==================== 持久化工具 ====================
 
@@ -32,12 +57,22 @@ function saveProject(projectId: string, project: FamilyProject) {
   localStorage.setItem(STORAGE_PREFIX + projectId, JSON.stringify(project));
 }
 
+// 所有工作区保存按调用顺序落盘，切换工程时也能等待此前的自动保存完成。
+let projectSaveQueue: Promise<void> = Promise.resolve();
+function saveProjectFile(workspacePath: string, jsonContent: string): Promise<void> {
+  const task = projectSaveQueue
+    .catch(() => undefined)
+    .then(() => invokeSaveProjectFile(workspacePath, jsonContent));
+  projectSaveQueue = task;
+  return task;
+}
+
 /** 自动持久化：在每次 set() 修改 project 后立即写入（支持 Web 端和 Tauri 端） */
 function autoSave(get: () => FamilyStore) {
   const { currentProjectId, project, currentFilePath } = get();
   if (!currentProjectId || !project) return;
   if (isTauri() && currentFilePath) {
-    saveProjectJson(currentFilePath, JSON.stringify(project, null, 2))
+    saveProjectFile(currentFilePath, JSON.stringify(project, null, 2))
       .catch((e) => console.error('自动保存文件失败:', e));
   } else {
     saveProject(currentProjectId, project);
@@ -54,28 +89,25 @@ function loadProject(projectId: string): FamilyProject | null {
   }
 }
 
-/** 自动升级旧版养父母数据结构为新版数组格式 */
-function migrateProjectData(project: FamilyProject): FamilyProject {
-  if (!project || !project.persons) return project;
-  Object.values(project.persons).forEach((p) => {
-    if (!p.relations) {
-      p.relations = { spouses: [], children: [] };
-    }
-    if (p.relations.adoptiveFather && (!p.relations.adoptiveFathers || p.relations.adoptiveFathers.length === 0)) {
-      p.relations.adoptiveFathers = [p.relations.adoptiveFather];
-    }
-    if (p.relations.adoptiveMother && (!p.relations.adoptiveMothers || p.relations.adoptiveMothers.length === 0)) {
-      p.relations.adoptiveMothers = [p.relations.adoptiveMother];
-    }
-  });
-  return project;
+/** 自动升级旧版养父母数据结构为新版数组格式（已并入 dataMigration，保留入口注释） */
+
+function normalizeNativePath(p?: string | null): string {
+  if (!p) return '';
+  if (/^[a-zA-Z]:[\\/]/.test(p)) {
+    return p.replace(/\//g, '\\');
+  }
+  return p;
 }
 
 function getRecentProjects(): RecentProject[] {
   const raw = localStorage.getItem(RECENT_KEY);
   if (!raw) return [];
   try {
-    return JSON.parse(raw) as RecentProject[];
+    const list = JSON.parse(raw) as RecentProject[];
+    return list.map((item) => ({
+      ...item,
+      filePath: normalizeNativePath(item.filePath),
+    }));
   } catch {
     return [];
   }
@@ -83,9 +115,20 @@ function getRecentProjects(): RecentProject[] {
 
 function saveRecentProjects(projects: RecentProject[]) {
   localStorage.setItem(RECENT_KEY, JSON.stringify(projects));
+  saveRecentProjectsList(projects);
 }
 
 // ==================== Store 定义 ====================
+
+/** 一键同步的结果，供界面提示用 */
+export interface QuickSyncResult {
+  action: 'push' | 'pull' | 'none';
+  uploadedMedia?: number;
+  skippedMedia?: number;
+  downloadedMedia?: number;
+  remoteAt?: string;
+  device?: string;
+}
 
 interface FamilyStore {
   // 当前项目状态
@@ -95,6 +138,12 @@ interface FamilyStore {
   recentProjects: RecentProject[];
   currentFilePath: string | null;
   projectPassword: string | null;
+  /** 最近一次打开旧档案时的数据迁移报告（有断链才非空） */
+  dataMigrationReport: MigrationReport | null;
+  clearDataMigrationReport: () => void;
+  /** 旧 project.json 转 YRP 后，原始 JSON 的缓存备份路径。 */
+  formatBackupPath: string | null;
+  clearFormatBackupPath: () => void;
 
   // 开发者工具状态
   isAnonymized: boolean;
@@ -114,11 +163,34 @@ interface FamilyStore {
     skipPasswordCheck?: boolean
   ) => Promise<boolean>;
   importProjectFromJSON: (project: FamilyProject) => Promise<string>;
-  saveCustomLayout: (layout: Record<string, { x: number; y: number }>) => void;
-  clearCustomLayout: () => void;
+  saveCustomLayout: (layout: Record<string, { x: number; y: number }>, mode?: TreeLayoutMode) => void;
+  clearCustomLayout: (mode?: TreeLayoutMode) => void;
   closeProject: () => void;
   saveCurrentProject: () => Promise<void>;
-  saveProjectAs: () => Promise<boolean>;
+  saveProjectAs: (onProgress?: (stageText: string, fileName?: string) => void) => Promise<boolean>;
+  /** 档案已整体迁移到新的工作区目录后，切换当前指向并刷新最近列表 */
+  relocateProject: (newWorkspacePath: string) => Promise<void>;
+  /** 云同步：上传当前档案（只补传云端缺失的媒体） */
+  syncPushToCloud: () => Promise<SyncPushReport>;
+  /** 云同步：拉取云端档案（先自动备份本地 project.yrp） */
+  syncPullFromCloud: () => Promise<SyncPullReport>;
+  /**
+   * 一键同步：自动判断该上传还是该下载。
+   * - 云端比本机新 → 拉取
+   * - 本机比云端新 → 上传
+   * - 时间一致 → 什么都不做
+   */
+  quickSync: () => Promise<QuickSyncResult>;
+  /** 从云端某个家谱目录恢复到本机（新建工作区并打开），返回补下的媒体数量 */
+  restoreProjectFromCloud: (
+    remoteDir: string,
+    parentDir: string,
+    folderName: string
+  ) => Promise<{ media: number; workspacePath: string }>;
+  /** 检查云端是否有比本地更新的版本；无更新或未配置时返回 null */
+  checkRemoteUpdate: () => Promise<RemoteSyncMeta | null>;
+  /** 从磁盘重新载入当前工作区（同步后刷新界面用，保持 projectId 不变） */
+  reloadFromWorkspace: () => Promise<boolean>;
   loadRecentProjects: () => void;
   removeRecentProject: (projectId: string, filePath?: string) => void;
 
@@ -133,6 +205,8 @@ interface FamilyStore {
   getPerson: (id: string) => Person | undefined;
   getPersonsList: () => Person[];
   setDefaultPerspective: (id: string) => void;
+  /** 更新同辈手动排序（personId → 组内位次），同时影响树布局与称谓推导 */
+  setSiblingOrder: (order: Record<string, number>) => void;
 
   // 关系操作
   setRelation: (personId: string, relationType: string, targetId: string | null) => void;
@@ -152,8 +226,13 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
   recentProjects: [],
   currentFilePath: null,
   projectPassword: null,
+  dataMigrationReport: null,
+  formatBackupPath: null,
   isAnonymized: false,
   anonymizedNames: {},
+
+  clearDataMigrationReport: () => set({ dataMigrationReport: null }),
+  clearFormatBackupPath: () => set({ formatBackupPath: null }),
 
   // ==================== 项目操作 ====================
 
@@ -181,8 +260,8 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     };
 
     if (isTauri() && filePath) {
-      // 必须调用 saveProjectJson 写入到工作文件夹根下的 project.json 中！
-      saveProjectJson(filePath, JSON.stringify(project, null, 2))
+      // 必须调用 saveProjectFile 写入到工作文件夹根下的 project.json 中！
+      saveProjectFile(filePath, JSON.stringify(project, null, 2))
         .catch((e) => console.error('新建时保存 project.json 失败:', e));
     } else {
       saveProject(projectId, project);
@@ -230,7 +309,21 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     // 该方法一般用于 Web 版 localStorage 的历史文件
     const rawProject = loadProject(projectId);
     if (!rawProject) return false;
-    const project = migrateProjectData(rawProject);
+    // 迁移前的快照：断链时才写入 localStorage 备份
+    const snapshot = JSON.stringify(rawProject);
+    const migration = migrateProjectData(rawProject);
+    const project = migration.project;
+    const report = migration.report;
+    if (report.brokenRelations.length > 0) {
+      try {
+        localStorage.setItem(`${STORAGE_PREFIX}${projectId}_bak_v${report.fromVersion}`, snapshot);
+      } catch {
+        // 存储空间不足时不影响打开
+      }
+    }
+    if (report.versionBumped) {
+      saveProject(projectId, project);
+    }
 
     // 更新最近项目
     const recent = getRecentProjects();
@@ -250,6 +343,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
       project,
       isDirty: false,
       recentProjects: filtered.slice(0, 10),
+      dataMigrationReport: report.brokenRelations.length > 0 ? report : null,
     });
     return true;
   },
@@ -263,22 +357,37 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
       let workspacePath = path;
 
       // 1. 如果用户打开的是 .yrj 文件包，则自动解压至同级同名的工作区文件夹下
-      if (path.endsWith('.yrj')) {
+      if (path.toLowerCase().endsWith('.yrj')) {
+        setLoadStage('unpack');
         const normalized = path.replace(/\\/g, '/');
         const lastSlash = normalized.lastIndexOf('/');
         const parentDir = lastSlash !== -1 ? normalized.substring(0, lastSlash) : '.';
         const fileName = lastSlash !== -1 ? normalized.substring(lastSlash + 1) : normalized;
-        const folderName = fileName.endsWith('.yrj')
+        const folderName = fileName.toLowerCase().endsWith('.yrj')
           ? fileName.substring(0, fileName.length - 4)
           : fileName;
 
         workspacePath = await unpackYrj(path, parentDir, folderName, password);
+      } else {
+        // 普通文件夹 / 任意 .json：先规范化成真正包含工程数据的目录
+        // （容忍用户选了上一级目录，或把导出的「某某族谱.json」直接丢进文件夹）
+        setLoadStage('load');
+        workspacePath = await resolveWorkspaceDir(path);
       }
+      workspacePath = normalizeNativePath(workspacePath);
 
-      // 2. 直接以高速明文读取加载工作区下的 project.json 属性
-      const json = await loadProjectJson(workspacePath);
-      const rawProject = JSON.parse(json) as FamilyProject;
-      const project = migrateProjectData(rawProject);
+      // 2. 读取 YRP；旧版标准 JSON 会由后端先备份再自动转换。
+      setLoadStage('load');
+      const loaded = await loadProjectFile(workspacePath);
+      // 格式迁移在密码校验前已由后端完成，备份提示不能因解锁失败而丢失。
+      if (loaded.formatBackupPath) {
+        set({ formatBackupPath: loaded.formatBackupPath });
+      }
+      const rawProject = JSON.parse(loaded.json) as FamilyProject;
+      setLoadStage('prepare');
+      const migration = migrateProjectData(rawProject);
+      let project = migration.project;
+      const migrationReport = migration.report;
       // 从外部文件/文件夹打开时，总生成新的 projectId，避免与源项目或其他历史记录冲突
       const projectId = uuidv4();
 
@@ -293,36 +402,31 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
         }
       }
 
-      let discardedEmbeddedMedia = false;
-      for (const person of Object.values(project.persons)) {
-        if (person.avatar?.startsWith('data:')) {
-          person.avatar = undefined;
-          discardedEmbeddedMedia = true;
-        }
+      // 4. 换电脑打开时，project.yrp 里仍是原电脑的绝对路径（如 C:\Users\A\...\media\photo.jpg），
+      //     必须重新指向本机工作区的 media/，否则照片、音频、视频全部显示不出来。
+      let rebasedCount = 0;
+      project = rebaseMediaPathsToWorkspace(project, workspacePath, () => {
+        rebasedCount += 1;
+      });
 
-        // 兼容旧数据 / 脱敏数据中媒体数组可能缺失的情况
-        const photos = person.photos?.filter((photo) => !photo.path.startsWith('data:')) ?? [];
-        const audioFiles = person.audioFiles?.filter((audio) => !audio.path.startsWith('data:')) ?? [];
-        const videoFiles = person.videoFiles?.filter((video) => !video.path.startsWith('data:')) ?? [];
+      // 兼容旧数据 / 脱敏数据中媒体数组可能缺失的情况
+      Object.values(project.persons).forEach((person) => {
+        person.photos = person.photos || [];
+        person.audioFiles = person.audioFiles || [];
+        person.videoFiles = person.videoFiles || [];
+      });
 
-        const originalPhotosLen = person.photos?.length ?? 0;
-        const originalAudioLen = person.audioFiles?.length ?? 0;
-        const originalVideoLen = person.videoFiles?.length ?? 0;
-
-        if (
-          photos.length !== originalPhotosLen ||
-          audioFiles.length !== originalAudioLen ||
-          videoFiles.length !== originalVideoLen
-        ) {
-          person.photos = photos;
-          person.audioFiles = audioFiles;
-          person.videoFiles = videoFiles;
-          discardedEmbeddedMedia = true;
+      // 4.5 数据迁移备份：先在 project.yrp 旁复制一份旧版本快照，再落盘新数据
+      if (migrationReport.brokenRelations.length > 0) {
+        try {
+          migrationReport.backupPath = await backupProjectFile(workspacePath, migrationReport.fromVersion);
+        } catch (e) {
+          console.error('迁移前备份 project.yrp 失败:', e);
         }
       }
-
-      if (discardedEmbeddedMedia) {
-        await saveProjectJson(workspacePath, JSON.stringify(project, null, 2));
+      if (rebasedCount > 0 || migrationReport.versionBumped) {
+        setLoadStage('save');
+        await saveProjectFile(workspacePath, JSON.stringify(project, null, 2));
       }
 
       // 更新最近项目，绑定解压后的工作文件夹路径
@@ -344,6 +448,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
         project,
         isDirty: false,
         recentProjects: filtered.slice(0, 10),
+        dataMigrationReport: migrationReport.brokenRelations.length > 0 ? migrationReport : null,
       });
       return true;
     } catch (err) {
@@ -353,7 +458,9 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
   },
 
   importProjectFromJSON: async (rawProject: FamilyProject) => {
-    const project = migrateProjectData(rawProject);
+    const migration = migrateProjectData(rawProject);
+    const project = migration.project;
+    const report = migration.report;
     // 导入 JSON 时总生成新的 projectId，避免与已有项目冲突
     const projectId = uuidv4();
     const now = new Date().toISOString();
@@ -377,27 +484,47 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
       project,
       isDirty: false,
       recentProjects: filtered.slice(0, 10),
+      dataMigrationReport: report.brokenRelations.length > 0 ? report : null,
     });
 
     return projectId;
   },
 
-  saveCustomLayout: (layout: Record<string, { x: number; y: number }>) => {
+  saveCustomLayout: (layout: Record<string, { x: number; y: number }>, mode?: TreeLayoutMode) => {
     const { project } = get();
     if (!project) return;
-    const updated = {
+    const isAligned = mode === 'aligned';
+    const updated: FamilyProject = {
       ...project,
       customLayout: layout,
+      ...(isAligned ? { customLayoutAligned: layout } : { customLayoutClassic: layout }),
+      // 快照由用户当前的完整布局生成（含侧栏卡坐标），恢复时原样应用
+      sideCardsPinned: true,
     };
     set({ project: updated, isDirty: true });
     autoSave(get);
   },
 
-  clearCustomLayout: () => {
+  clearCustomLayout: (mode?: TreeLayoutMode) => {
     const { project } = get();
     if (!project) return;
-    const { customLayout, ...rest } = project;
-    set({ project: rest as FamilyProject, isDirty: true });
+    const updated = { ...project };
+    if (mode === 'aligned') {
+      delete updated.customLayoutAligned;
+    } else if (mode === 'classic') {
+      delete updated.customLayoutClassic;
+    } else {
+      delete updated.customLayoutClassic;
+      delete updated.customLayoutAligned;
+    }
+
+    if (!updated.customLayoutClassic && !updated.customLayoutAligned) {
+      delete updated.customLayout;
+      delete updated.sideCardsPinned;
+    } else {
+      updated.customLayout = mode === 'aligned' ? updated.customLayoutClassic : updated.customLayoutAligned;
+    }
+    set({ project: updated as FamilyProject, isDirty: true });
     autoSave(get);
   },
 
@@ -405,7 +532,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     const state = get();
     if (state.isDirty && state.currentProjectId && state.project) {
       if (isTauri() && state.currentFilePath) {
-        saveProjectJson(state.currentFilePath, JSON.stringify(state.project, null, 2))
+        saveProjectFile(state.currentFilePath, JSON.stringify(state.project, null, 2))
           .catch((e) => console.error('关闭时保存工作区失败:', e));
       } else {
         saveProject(state.currentProjectId, state.project);
@@ -417,6 +544,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
       isDirty: false,
       currentFilePath: null,
       projectPassword: null,
+      dataMigrationReport: null,
     });
   },
 
@@ -430,10 +558,10 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
 
     if (isTauri() && currentFilePath) {
       try {
-        await saveProjectJson(currentFilePath, JSON.stringify(updated, null, 2));
+        await saveProjectFile(currentFilePath, JSON.stringify(updated, null, 2));
         set({ project: updated, isDirty: false });
       } catch (err) {
-        console.error('保存工作区 project.json 失败:', err);
+        console.error('保存工作区 project.yrp 失败:', err);
         throw err;
       }
     } else {
@@ -442,30 +570,59 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     }
   },
 
-  saveProjectAs: async () => {
+  saveProjectAs: async (onProgress?: (stageText: string, fileName?: string) => void) => {
     const { project, currentFilePath, projectPassword } = get();
     if (!project) return false;
-
-    // 另存为：弹出对话框让用户指定打包好的 YRJ 文件名及保存位置
-    const defaultName = `${project.meta.familyName}.yrj`;
-    const path = await selectFilePathForSave(defaultName);
-    if (!path) return false;
 
     const updated = {
       ...project,
       meta: { ...project.meta, updatedAt: new Date().toISOString() },
     };
 
+    // 另存为文件名，默认用家谱名
+    const defaultName = `${project.meta.familyName}.yrj`;
+
+    // 网页版：没有文件系统，直接下载与原版同格式的 .yrj 单文件
+    if (!isTauri()) {
+      try {
+        const { exportYrjInBrowser } = await import('../utils/yrjBrowser');
+        await exportYrjInBrowser(updated, defaultName, projectPassword || undefined);
+        set({ project: updated, isDirty: false });
+        return true;
+      } catch (err) {
+        console.error('浏览器端打包导出 YRJ 失败:', err);
+        throw err;
+      }
+    }
+
+    // 桌面版：弹出对话框让用户指定打包好的 YRJ 文件名及保存位置
+    onProgress?.('请在系统弹窗中选择保存位置并确认…', defaultName);
+    const path = await selectFilePathForSave(defaultName);
+    if (!path) return false;
+
+    const parts = path.replace(/[\\/]+$/, '').split(/[\\/]/);
+    const exportFileName = parts[parts.length - 1] || defaultName;
+
     try {
-      if (isTauri() && currentFilePath) {
-        // 先确保工作区 project.json 处于最新状态
-        await saveProjectJson(currentFilePath, JSON.stringify(updated, null, 2));
-        // 将整个工作区目录（包括 project.json 与 media/ 照片）一并进行 ZIP 压缩加密打包导出为单文件
+      if (currentFilePath) {
+        onProgress?.('正在保存当前工作区工程数据…', exportFileName);
+        // 先确保工作区 project.yrp 处于最新状态
+        await saveProjectFile(currentFilePath, JSON.stringify(updated, null, 2));
+        // 将整个工作区目录（包括 project.yrp 与 media/ 照片）一并进行 ZIP 压缩加密打包导出为单文件
+        onProgress?.(
+          projectPassword ? '正在压缩并加密档案与媒体文件…' : '正在压缩并打包档案与媒体文件…',
+          exportFileName
+        );
         await packToYrj(currentFilePath, path, projectPassword || undefined);
       } else {
-        // Web 环境下另存为退步为 YRJ 单文件下载（保持兼容）
-        await saveYrjFile(path, JSON.stringify(updated, null, 2), projectPassword || undefined);
+        onProgress?.('正在打包 YRJ 归档数据…', exportFileName);
+        // 档案还没落地到工作区（极少见）：直接用同一套容器格式写单文件
+        const { buildYrjBytes, bytesToBase64 } = await import('../utils/yrjBrowser');
+        const bytes = await buildYrjBytes(updated, projectPassword || undefined);
+        onProgress?.('正在写入 YRJ 文件…', exportFileName);
+        await writeBinaryFile(path, bytesToBase64(bytes));
       }
+      onProgress?.('YRJ 档案打包导出完成！', exportFileName);
 
       set({
         project: updated,
@@ -478,10 +635,265 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     }
   },
 
+  relocateProject: async (newWorkspacePath: string) => {
+    const { project, currentProjectId, currentFilePath } = get();
+    if (!project || !currentProjectId) return;
+
+    const oldPath = currentFilePath || '';
+
+    // 头像/音视频在 project.yrp 里是绝对路径，内存中的对象也要同步改写前缀
+    let updatedProject = project;
+    if (oldPath && oldPath !== newWorkspacePath) {
+      const fromEscaped = JSON.stringify(oldPath).slice(1, -1);
+      const toEscaped = JSON.stringify(newWorkspacePath).slice(1, -1);
+      try {
+        updatedProject = JSON.parse(
+          JSON.stringify(project).split(fromEscaped).join(toEscaped)
+        ) as FamilyProject;
+      } catch (e) {
+        console.error('迁移后改写内存路径失败:', e);
+        updatedProject = project;
+      }
+    }
+
+    set({
+      project: updatedProject,
+      currentFilePath: newWorkspacePath,
+      isDirty: false,
+    });
+
+    // 最近打开列表里的路径也要指向新位置，否则下次会打开旧目录
+    const recent = getRecentProjects();
+    const target = recent.find((r) => r.projectId === currentProjectId);
+    if (target) {
+      target.filePath = newWorkspacePath;
+      saveRecentProjects(recent);
+      set({ recentProjects: recent });
+    }
+
+    if (isTauri()) {
+      // 立即在新位置落盘一次，确保 project.yrp 与当前内存状态一致
+      await saveProjectFile(newWorkspacePath, JSON.stringify(updatedProject, null, 2));
+    } else {
+      saveProject(currentProjectId, updatedProject);
+    }
+  },
+
+  // ==================== 云同步（WebDAV） ====================
+
+  reloadFromWorkspace: async () => {
+    const { currentFilePath } = get();
+    if (!currentFilePath || !isTauri()) return false;
+
+    const loaded = await loadProjectFile(currentFilePath);
+    const migration = migrateProjectData(JSON.parse(loaded.json) as FamilyProject);
+    let project = migration.project;
+    const migrationReport = migration.report;
+    // 云端下来的档案，媒体路径是另一台电脑的绝对路径 → 重新指向本机 media/
+    project = rebaseMediaPathsToWorkspace(project, currentFilePath);
+    Object.values(project.persons || {}).forEach((person) => {
+      person.photos = person.photos || [];
+      person.audioFiles = person.audioFiles || [];
+      person.videoFiles = person.videoFiles || [];
+    });
+
+    if (migrationReport.brokenRelations.length > 0) {
+      try {
+        migrationReport.backupPath = await backupProjectFile(currentFilePath, migrationReport.fromVersion);
+      } catch (e) {
+        console.error('迁移前备份 project.yrp 失败:', e);
+      }
+    }
+
+    await saveProjectFile(currentFilePath, JSON.stringify(project, null, 2));
+    set({
+      project,
+      isDirty: false,
+      dataMigrationReport: migrationReport.brokenRelations.length > 0 ? migrationReport : null,
+      formatBackupPath: loaded.formatBackupPath,
+    });
+    return true;
+  },
+
+  syncPushToCloud: async () => {
+    const { project, currentFilePath } = get();
+    if (!project) throw new Error('请先打开一个家谱');
+    if (!currentFilePath) throw new Error('当前档案还没有保存到本地文件夹，请先保存');
+
+    const settings = getSyncSettings();
+    if (!isSyncConfigured(settings)) {
+      throw new Error('请先在「多设备同步」中填写 WebDAV 地址与账号');
+    }
+
+    const { key, created } = ensureSyncKey(project);
+    if (created) {
+      set({ project: { ...project, meta: { ...project.meta, syncKey: key } } });
+    }
+
+    // 后端直接读磁盘上的 project.yrp 上传，先确保它是最新状态
+    const latest = get().project!;
+    await saveProjectFile(currentFilePath, JSON.stringify(latest, null, 2));
+
+    return webdavPush(
+      settings.server,
+      settings.username,
+      settings.password,
+      remoteDirFor(settings, key),
+      currentFilePath
+    );
+  },
+
+  syncPullFromCloud: async () => {
+    const { project, currentFilePath } = get();
+    if (!project || !currentFilePath) {
+      throw new Error('当前档案还没有保存到本地文件夹，请先保存');
+    }
+
+    const settings = getSyncSettings();
+    if (!isSyncConfigured(settings)) {
+      throw new Error('请先在「多设备同步」中填写 WebDAV 地址与账号');
+    }
+
+    const { key } = ensureSyncKey(project);
+    const report = await webdavPull(
+      settings.server,
+      settings.username,
+      settings.password,
+      remoteDirFor(settings, key),
+      currentFilePath
+    );
+
+    await get().reloadFromWorkspace();
+
+    // 首次从别的设备同步时，云端档案可能还没有 syncKey —— 补上并写回，保证目录映射稳定
+    const after = get().project;
+    if (after && after.meta.syncKey !== key) {
+      const updated = { ...after, meta: { ...after.meta, syncKey: key } };
+      set({ project: updated });
+      await saveProjectFile(currentFilePath, JSON.stringify(updated, null, 2));
+    }
+
+    return report;
+  },
+
+  quickSync: async () => {
+    const { project, currentFilePath } = get();
+    if (!project) throw new Error('请先打开一个家谱');
+    if (!currentFilePath) throw new Error('当前档案还没有保存到本地文件夹，请先保存');
+
+    const settings = getSyncSettings();
+    if (!settings.enabled) {
+      throw new Error('请先在「软件设置 → 云同步」中勾选「启用云同步」');
+    }
+    if (!isSyncConfigured(settings)) {
+      throw new Error('请先在「多设备同步」中填写 WebDAV 地址与账号');
+    }
+
+    // 第一次同步时先把同步 ID 落盘，保证两台电脑落到同一个云端目录
+    const { key, created } = ensureSyncKey(project);
+    if (created) {
+      const withKey = { ...project, meta: { ...project.meta, syncKey: key } };
+      set({ project: withKey });
+      await saveProjectFile(currentFilePath, JSON.stringify(withKey, null, 2));
+    }
+
+    const meta = await webdavRemoteMeta(
+      settings.server,
+      settings.username,
+      settings.password,
+      remoteDirFor(settings, key)
+    );
+    const localAt = get().project?.meta.updatedAt || '';
+    const remoteAt = meta?.projectUpdatedAt || '';
+
+    if (remoteAt && remoteAt > localAt) {
+      // 直接拉取会覆盖尚未保存的编辑，先把选择权交回用户
+      if (get().isDirty) {
+        throw new Error('本机还有未保存的修改，请先「保存档案」再同步');
+      }
+      const report = await get().syncPullFromCloud();
+      return {
+        action: 'pull' as const,
+        downloadedMedia: report.downloadedMedia,
+        remoteAt: report.remote.updatedAt,
+        device: report.remote.device,
+      };
+    }
+
+    if (remoteAt && remoteAt === localAt) {
+      return {
+        action: 'none' as const,
+        remoteAt: meta?.updatedAt,
+        device: meta?.device,
+      };
+    }
+
+    const report = await get().syncPushToCloud();
+    return {
+      action: 'push' as const,
+      uploadedMedia: report.uploadedMedia,
+      skippedMedia: report.skippedMedia,
+    };
+  },
+
+  restoreProjectFromCloud: async (remoteDir, parentDir, folderName) => {
+    const settings = getSyncSettings();
+    if (!isSyncConfigured(settings)) {
+      throw new Error('请先在「多设备同步」中填写 WebDAV 地址与账号');
+    }
+
+    const workspacePath = await createUniqueProjectWorkspace(
+      parentDir,
+      folderName || '家谱'
+    );
+    const report = await webdavPull(
+      settings.server,
+      settings.username,
+      settings.password,
+      remoteDirFor(settings, remoteDir.split('/').filter(Boolean).pop() || ''),
+      workspacePath
+    );
+
+    // 绑定同步 ID：云端目录名就是这台家谱的 syncKey，之后两边才能对上
+    const key = remoteDir.split('/').filter(Boolean).pop() || '';
+    const loaded = await loadProjectFile(workspacePath);
+    const parsed = JSON.parse(loaded.json) as FamilyProject;
+    if (key && parsed.meta.syncKey !== key) {
+      parsed.meta.syncKey = key;
+      await saveProjectFile(workspacePath, JSON.stringify(parsed, null, 2));
+    }
+
+    const opened = await get().openProjectFromFile(workspacePath);
+    if (!opened) {
+      throw new Error(`云端档案已下载到 ${workspacePath}，但打开失败`);
+    }
+    return { media: report.downloadedMedia, workspacePath };
+  },
+
+  checkRemoteUpdate: async () => {
+    const { project } = get();
+    const settings = getSyncSettings();
+    if (!project?.meta.syncKey || !settings.enabled || !isSyncConfigured(settings)) return null;
+
+    try {
+      const meta = await webdavRemoteMeta(
+        settings.server,
+        settings.username,
+        settings.password,
+        remoteDirFor(settings, project.meta.syncKey)
+      );
+      if (!meta || !meta.projectUpdatedAt) return null;
+      const localAt = project.meta.updatedAt || '';
+      return meta.projectUpdatedAt > localAt ? meta : null;
+    } catch {
+      // 离线 / 服务不可用时静默失败，不打扰正常使用
+      return null;
+    }
+  },
+
   loadRecentProjects: () => {
     set({ recentProjects: getRecentProjects() });
   },
-
   // ==================== 元数据操作 ====================
 
   updateMeta: (updates: Partial<FamilyMeta>) => {
@@ -626,6 +1038,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
       if (r.adoptiveMother === id) r.adoptiveMother = undefined;
       if (r.adoptiveFathers) r.adoptiveFathers = r.adoptiveFathers.filter(fid => fid !== id);
       if (r.adoptiveMothers) r.adoptiveMothers = r.adoptiveMothers.filter(mid => mid !== id);
+      r.adoptiveParents = removePersonFromAdoptiveGroups(r.adoptiveParents, id);
       if (r.stepFather === id) r.stepFather = undefined;
       if (r.stepMother === id) r.stepMother = undefined;
       r.spouses = r.spouses.filter((s) => s.id !== id);
@@ -684,6 +1097,24 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     });
   },
 
+  setSiblingOrder: (order: Record<string, number>) => {
+    const { project } = get();
+    if (!project) return;
+
+    set({
+      project: {
+        ...project,
+        meta: {
+          ...project.meta,
+          siblingOrder: { ...order },
+          updatedAt: new Date().toISOString(),
+        },
+      },
+      isDirty: true,
+    });
+    autoSave(get);
+  },
+
   // ==================== 关系操作 ====================
 
   setRelation: (personId: string, relationType: string, targetId: string | null) => {
@@ -693,29 +1124,24 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
     const person = { ...project.persons[personId] };
     const relations = { ...person.relations };
 
-    const validKeys = ['father', 'mother', 'adoptiveFather', 'adoptiveMother', 'stepFather', 'stepMother'];
+    const validKeys = ['father', 'mother', 'stepFather', 'stepMother'];
     if (validKeys.includes(relationType)) {
       (relations as any)[relationType] = targetId ?? undefined;
     }
 
-    // 支持数组形式的养父母
-    if (relationType === 'adoptiveFathers' && targetId) {
-      relations.adoptiveFathers = relations.adoptiveFathers || [];
-      if (!relations.adoptiveFathers.includes(targetId)) {
-        relations.adoptiveFathers = [...relations.adoptiveFathers, targetId];
-      }
-      // 同步设置旧版单值字段（兼容）
-      if (!relations.adoptiveFather) {
-        relations.adoptiveFather = targetId;
-      }
-    }
-    if (relationType === 'adoptiveMothers' && targetId) {
-      relations.adoptiveMothers = relations.adoptiveMothers || [];
-      if (!relations.adoptiveMothers.includes(targetId)) {
-        relations.adoptiveMothers = [...relations.adoptiveMothers, targetId];
-      }
-      if (!relations.adoptiveMother) {
-        relations.adoptiveMother = targetId;
+    // 养父母走分组结构：已在任何一组里则忽略，否则补进第一组空缺槽位（没有组就新建一组）
+    if ((relationType === 'adoptiveFather' || relationType === 'adoptiveMother') && targetId) {
+      const groups = [...(relations.adoptiveParents || [])];
+      const occupied = groups.some((group) => group.fatherId === targetId || group.motherId === targetId);
+      if (!occupied) {
+        const slotKey = relationType === 'adoptiveFather' ? 'fatherId' : 'motherId';
+        const emptyIndex = groups.findIndex((group) => !group[slotKey]);
+        if (emptyIndex >= 0) {
+          groups[emptyIndex] = { ...groups[emptyIndex], [slotKey]: targetId };
+        } else {
+          groups.push({ id: createAdoptiveGroupId(), [slotKey]: targetId });
+        }
+        relations.adoptiveParents = groups;
       }
     }
 

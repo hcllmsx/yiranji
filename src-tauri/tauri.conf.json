@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "以苒纪",
-  "version": "26.9.30",
+  "version": "26.10.26",
   "identifier": "com.yiranji.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -38,7 +38,29 @@
     "targets": [
       "nsis"
     ],
-    "copyright": "© 2026 hcllmsx",
+    "publisher": "莫莫先生",
+    "copyright": "© 2026 莫莫先生",
+    "resources": {
+      "resources/sample-family": "sample-family"
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "yrp"
+        ],
+        "name": "Yiranji.Project",
+        "description": "以苒纪工程文件",
+        "mimeType": "application/vnd.yiranji.project"
+      },
+      {
+        "ext": [
+          "yrj"
+        ],
+        "name": "Yiranji.Package",
+        "description": "以苒纪文件包",
+        "mimeType": "application/vnd.yiranji.package"
+      }
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -52,6 +74,8 @@
           "SimpChinese",
           "English"
         ],
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
         "installerHooks": "./nsis-hooks.nsh"
       }
     },

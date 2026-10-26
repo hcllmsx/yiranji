@@ -27,6 +27,10 @@ const JPEG_QUALITY = 92;
 /** 支持的渲染倍率档位 */
 export type RenderScale = 1 | 2 | 3 | 4;
 
+export interface ImageExportOptions {
+  includePlaceholders?: boolean;
+}
+
 export interface ImageExportResult {
   status: 'saved' | 'cancelled';
   /** 倍率被自动回退时的提示信息 */
@@ -160,11 +164,16 @@ async function encodePng(canvas: HTMLCanvasElement): Promise<ArrayBuffer> {
 export async function exportTreeImage(
   format: 'jpg' | 'png',
   renderScale: RenderScale,
-  defaultName: string
+  defaultName: string,
+  options?: ImageExportOptions
 ): Promise<ImageExportResult> {
   const viewportEl = getTreeViewport();
   if (!viewportEl) {
     throw new Error('未找到家谱树画布，请先进入家谱树页面');
+  }
+
+  if (options?.includePlaceholders) {
+    viewportEl.classList.add('export-include-placeholders');
   }
 
   const bounds = getTreeDomBounds(viewportEl);
@@ -204,6 +213,9 @@ export async function exportTreeImage(
       },
     });
   } finally {
+    if (options?.includePlaceholders) {
+      viewportEl.classList.remove('export-include-placeholders');
+    }
     restoreImages();
   }
 

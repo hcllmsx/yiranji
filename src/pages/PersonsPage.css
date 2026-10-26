@@ -79,6 +79,16 @@
   box-shadow: 0 0 0 1px var(--color-accent-lighter);
 }
 
+.person-card.is-placeholder {
+  border: 1.5px dashed var(--color-border);
+  opacity: 1;
+  background-color: var(--color-bg-secondary);
+}
+
+.person-card.is-placeholder:hover {
+  border-color: var(--color-accent);
+}
+
 .person-card-avatar {
   width: 72px;
   height: 72px;
@@ -143,4 +153,17 @@
 
 .person-card-add .add-icon {
   font-size: 2rem;
+}
+
+/* 头像可点击查看大图 */
+.person-card-avatar.clickable {
+  cursor: zoom-in;
+}
+
+.person-card-avatar.clickable:hover img {
+  transform: scale(1.06);
+}
+
+.person-card-avatar img {
+  transition: transform 0.2s ease;
 }

@@ -8,7 +8,7 @@
 // 且 tauri.conf.json 的 version 字段必须为纯 semver（不能带 v），故在打包完成后重命名。
 // 用法：npm run build:installer （会先执行 tauri build，再调用本脚本）
 
-import { readdir, rename, writeFile, mkdir, copyFile, rm } from 'node:fs/promises';
+import { readdir, rename, writeFile, mkdir, copyFile, rm, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
@@ -16,6 +16,12 @@ import { join, resolve } from 'node:path';
 
 const bundleDir = resolve(process.cwd(), 'src-tauri/target/release/bundle/nsis');
 const outputDir = resolve(process.cwd(), 'output');
+const versionFile = resolve(process.cwd(), 'VERSION');
+
+// 本次打包的版本号：只发布这一版，避免把 bundle 目录里上次残留的旧安装包一起发布
+const currentVersion = existsSync(versionFile)
+  ? (await readFile(versionFile, 'utf8')).trim()
+  : '';
 
 if (!existsSync(bundleDir)) {
   console.log('[post-build] 未找到 NSIS 打包目录，跳过后处理');
@@ -24,14 +30,6 @@ if (!existsSync(bundleDir)) {
 
 // 确保 output 目录存在
 await mkdir(outputDir, { recursive: true });
-
-// 清理 output 中上一次打包留下的安装包与校验文件（只删匹配文件，不动其他内容）
-for (const old of await readdir(outputDir)) {
-  if (old.endsWith('-setup.exe') || old.endsWith('-setup.exe.sha256')) {
-    await rm(join(outputDir, old));
-    console.log(`[post-build] 清理旧产物: output/${old}`);
-  }
-}
 
 /**
  * 流式计算文件 SHA256（安装包较大，避免整读入内存）
@@ -50,8 +48,38 @@ const files = await readdir(bundleDir);
 let renamed = 0;
 let published = 0;
 
-for (const file of files) {
-  if (!file.endsWith('-setup.exe')) continue;
+// ---- 先确定要发布的产物，找不到就原样保留 output，避免"清理完却没东西可发" ----
+const versionMatched = files.filter((file) => {
+  if (!file.endsWith('-setup.exe')) return false;
+  if (!currentVersion) return true;
+  const hit =
+    file.includes(`_${currentVersion}_`) || file.includes(`_v${currentVersion}_`);
+  if (!hit) {
+    console.log(`[post-build] 跳过非本次版本的产物: ${file}`);
+  }
+  return hit;
+});
+
+// 优先处理本次新生成、还没加 v 前缀的文件；没有时才回退处理已重命名的文件
+const withoutVPrefix = versionMatched.filter(
+  (file) => !currentVersion || !file.includes(`_v${currentVersion}_`)
+);
+const targets = withoutVPrefix.length > 0 ? withoutVPrefix : versionMatched;
+
+if (targets.length === 0) {
+  console.log('[post-build] 未找到与 VERSION 匹配的安装包，保留 output 现有内容');
+  process.exit(0);
+}
+
+// 清理 output 中上一次打包留下的安装包与校验文件（只删匹配文件，不动其他内容）
+for (const old of await readdir(outputDir)) {
+  if (old.endsWith('-setup.exe') || old.endsWith('-setup.exe.sha256')) {
+    await rm(join(outputDir, old));
+    console.log(`[post-build] 清理旧产物: output/${old}`);
+  }
+}
+
+for (const file of targets) {
   const filePath = join(bundleDir, file);
 
   // ---- 1. 重命名：{productName}_{纯数字版本}_{架构}-setup.exe 加 v 前缀 ----

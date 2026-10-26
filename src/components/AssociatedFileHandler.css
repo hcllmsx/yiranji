@@ -1,0 +1,83 @@
+.associated-open-dialog {
+  max-width: 480px;
+}
+
+.associated-open-path {
+  margin: 0 0 var(--space-4);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.associated-open-error {
+  margin: var(--space-3) 0 0;
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.associated-open-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+  color: var(--color-text-secondary);
+}
+
+.associated-open-dialog input[type='password']::-ms-reveal,
+.associated-open-dialog input[type='password']::-ms-reveal:hover {
+  display: none;
+}
+
+.associated-open-dialog .pw-wrap {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-input);
+}
+
+.associated-open-dialog .pw-wrap:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px oklch(58% 0.18 25 / 0.1);
+}
+
+.associated-open-dialog .pw-wrap input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-3) var(--space-2) var(--space-3) var(--space-4);
+  border: none;
+  background: none;
+  outline: none;
+  box-shadow: none;
+  color: var(--color-text-primary);
+}
+
+.associated-open-dialog .pw-wrap input:focus {
+  border: none;
+  outline: none;
+  box-shadow: none;
+}
+
+.associated-open-dialog .pw-toggle {
+  flex: none;
+  align-self: stretch;
+  width: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+
+.associated-open-dialog .pw-toggle:hover {
+  color: var(--color-accent);
+  background: var(--color-accent-lighter);
+}

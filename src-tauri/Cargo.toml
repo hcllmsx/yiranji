@@ -1,10 +1,10 @@
 [package]
 name = "app"
-version = "26.9.30"
-description = "A Tauri App"
-authors = ["you"]
-license = ""
-repository = ""
+version = "26.10.26"
+description = "以苒纪 — 一款现代化的家谱管理桌面应用"
+authors = ["莫莫先生"]
+license = "GPL-3.0-only"
+repository = "https://github.com/hcllmsx/yiranji"
 edition = "2021"
 rust-version = "1.77.2"
 
@@ -24,6 +24,7 @@ log = "0.4"
 tauri = { version = "2.11.5", features = ["protocol-asset", "devtools"] }
 tauri-plugin-log = "2"
 tauri-plugin-shell = "2"
+tauri-plugin-single-instance = "2"
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
 aes-gcm = "0.10"
 pbkdf2 = "0.12"
@@ -32,3 +33,6 @@ sha2 = "0.10"
 rfd = "0.14"
 hmac = "0.12"
 base64 = "0.22"
+tempfile = "3"
+time = { version = "=0.3.36", features = ["formatting"] }
+reqwest = { version = "0.12", default-features = false, features = ["default-tls", "json", "charset"] }

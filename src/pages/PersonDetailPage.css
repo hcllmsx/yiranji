@@ -169,13 +169,11 @@
 .icon-box {
   width: 32px;
   height: 32px;
-  background-color: #f7f8fa;
-  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #595959;
-  font-size: 15px;
+  font-size: 24px;
   flex-shrink: 0;
 }
 
@@ -437,6 +435,18 @@
 .add-media-btn:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
+}
+
+.add-media-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-color: var(--color-border);
+  color: var(--color-text-tertiary);
+}
+
+.add-media-btn:disabled:hover {
+  border-color: var(--color-border);
+  color: var(--color-text-tertiary);
 }
 
 .media-delete-btn {
@@ -766,3 +776,32 @@
 }
 
 
+
+/* 头像可点击查看大图 */
+.person-detail-avatar img.clickable {
+  cursor: zoom-in;
+  transition: filter 0.18s ease, transform 0.18s ease;
+}
+
+.person-detail-avatar img.clickable:hover {
+  filter: brightness(1.04) saturate(1.02);
+}
+
+.person-detail-avatar img.rect-avatar-img.clickable:hover {
+  transform: scale(1.008);
+}
+
+/* 照片栏：「头像原图」标签（被头像引用期间不显示删除按钮） */
+.photo-avatar-tag {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  padding: 2px 8px;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 999px;
+  pointer-events: none;
+}

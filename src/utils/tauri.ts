@@ -55,7 +55,7 @@ export async function selectExportFilePath(
 }
 
 /**
- * 弹出原生打开文件对话框，选择 .yrj 文件
+ * 弹出原生打开文件对话框，选择 .yrp 工程或 .yrj 文件包
  */
 export async function selectFilePathForOpen(): Promise<string | null> {
   const api = await getTauriApi();
@@ -65,11 +65,33 @@ export async function selectFilePathForOpen(): Promise<string | null> {
 
 /**
  * 选择父文件夹目录
+ * @param defaultDir 对话框默认打开的目录（可为空，为空则使用系统默认位置）
  */
-export async function selectProjectParentDir(): Promise<string | null> {
+export async function selectProjectParentDir(defaultDir?: string | null): Promise<string | null> {
   const api = await getTauriApi();
   if (!api) return null;
-  return api.invoke<string | null>('select_project_parent_dir');
+  return api.invoke<string | null>('select_project_parent_dir', { defaultDir: defaultDir || null });
+}
+
+/**
+ * 在系统文件管理器中打开指定路径（目录直接打开，文件则定位选中）
+ */
+export async function openInExplorer(path: string): Promise<void> {
+  const api = await getTauriApi();
+  if (!api) throw new Error('未运行在 Tauri 环境中');
+  return api.invoke<void>('open_in_explorer', { path });
+}
+
+/**
+ * 把整个档案工作区复制到新的父目录下（自动修正 project.yrp 内的绝对媒体路径），返回新工作区路径
+ */
+export async function moveProjectWorkspace(fromWorkspace: string, toParentDir: string): Promise<string> {
+  const api = await getTauriApi();
+  if (!api) throw new Error('未运行在 Tauri 环境中');
+  return api.invoke<string>('move_project_workspace', {
+    fromWorkspace,
+    toParentDir,
+  });
 }
 
 /**
@@ -82,21 +104,73 @@ export async function createProjectWorkspace(parentDir: string, folderName: stri
 }
 
 /**
- * 将明文项目 JSON 保存至工作区的 project.json
+ * 创建导入用的工作区目录（同名时自动追加序号，避免覆盖已有档案）
  */
-export async function saveProjectJson(workspacePath: string, jsonContent: string): Promise<void> {
+export async function createUniqueProjectWorkspace(parentDir: string, baseName: string): Promise<string> {
   const api = await getTauriApi();
-  if (!api) return;
-  return api.invoke<void>('save_project_json', { workspacePath, jsonContent });
+  if (!api) throw new Error('未运行在 Tauri 环境中');
+  return api.invoke<string>('create_unique_project_workspace', { parentDir, baseName });
+}
+
+/** 释放随安装包发布的示例家谱，返回其工作区路径。若 force 为 true 则强制覆盖 */
+export async function installSampleWorkspace(force = false): Promise<string> {
+  const api = await getTauriApi();
+  if (!api) throw new Error('未运行在 Tauri 环境中');
+  return api.invoke<string>('install_sample_workspace', { force });
 }
 
 /**
- * 从工作区加载 project.json 数据
+ * 把用户选中的路径（文件夹或 .json）规范化成工程工作区目录
  */
-export async function loadProjectJson(workspacePath: string): Promise<string> {
+export async function resolveWorkspaceDir(path: string): Promise<string> {
   const api = await getTauriApi();
   if (!api) throw new Error('未运行在 Tauri 环境中');
-  return api.invoke<string>('load_project_json', { workspacePath });
+  return api.invoke<string>('resolve_workspace_dir', { path });
+}
+
+/** 将工程 JSON 编码为带专用文件头的 project.yrp 并原子保存。 */
+export async function saveProjectFile(workspacePath: string, jsonContent: string): Promise<void> {
+  const api = await getTauriApi();
+  if (!api) return;
+  return api.invoke<void>('save_project_file', { workspacePath, jsonContent });
+}
+
+export interface ProjectLoadResult {
+  json: string;
+  /** 旧版 project.json 自动转换时，原始文件在缓存 backups 目录中的路径。 */
+  formatBackupPath: string | null;
+}
+
+export interface AssociatedFileRequest {
+  id: number;
+  paths: string[];
+}
+
+/** 前端事件监听就绪后，读取冷启动或尚未处理完成的文件打开请求。 */
+export async function takePendingAssociatedFiles(): Promise<AssociatedFileRequest[]> {
+  const api = await getTauriApi();
+  if (!api) return [];
+  return api.invoke<AssociatedFileRequest[]>('take_pending_associated_files');
+}
+
+export async function acknowledgeAssociatedFile(id: number, path: string): Promise<void> {
+  const api = await getTauriApi();
+  if (!api) return;
+  return api.invoke<void>('acknowledge_associated_file', { id, path });
+}
+
+/** 读取 YRP；打开旧版标准 project.json 时由后端自动备份并转换。 */
+export async function loadProjectFile(workspacePath: string): Promise<ProjectLoadResult> {
+  const api = await getTauriApi();
+  if (!api) throw new Error('未运行在 Tauri 环境中');
+  return api.invoke<ProjectLoadResult>('load_project_file', { workspacePath });
+}
+
+/** 数据关系迁移前，在工作区备份当前 project.yrp。 */
+export async function backupProjectFile(workspacePath: string, label: string): Promise<string> {
+  const api = await getTauriApi();
+  if (!api) throw new Error('未运行在 Tauri 环境中');
+  return api.invoke<string>('backup_project_file', { workspacePath, label });
 }
 
 /**
@@ -186,11 +260,41 @@ if (isTauri()) {
 }
 
 /**
+ * 判断给定的媒体/头像路径在当前环境下是否可作为有效的 <img> src 显示
+ * 在 Tauri 桌面环境下：只要有非空路径均可通过 convertLocalSrc 正常加载
+ * 在纯 Web 环境下：仅支持 data: (Base64)、blob: 或 http(s): 在线 URL，
+ *                  如果是本地磁盘绝对路径（如 D:\... 或 /Users/...），由于浏览器沙箱限制无法读取，返回 false
+ */
+export function canDisplaySrc(path?: string | null): path is string {
+  if (!path || typeof path !== 'string') return false;
+  const trimmed = path.trim();
+  if (!trimmed) return false;
+  if (isTauri()) return true;
+  return (
+    trimmed.startsWith('data:') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://')
+  );
+}
+
+/**
  * 将本地绝对路径转换为可以直接在 img 标签渲染的协议 URL
  */
-export function convertLocalSrc(path: string): string {
+export function convertLocalSrc(path?: string | null): string {
   if (!path) return '';
-  if (path.startsWith('data:')) return path; // Web 端 Base64 直接返回
+  if (
+    path.startsWith('data:') ||
+    path.startsWith('blob:') ||
+    path.startsWith('http://') ||
+    path.startsWith('https://')
+  ) {
+    return path;
+  }
+  if (!isTauri()) {
+    // 纯网页环境下，本地物理磁盘绝对路径浏览器无法直接访问
+    return '';
+  }
   const tauriInternals = (window as any).__TAURI_INTERNALS__;
   if (tauriInternals?.convertFileSrc) {
     return tauriInternals.convertFileSrc(path, 'asset');
@@ -264,4 +368,221 @@ export async function getAppLogs(): Promise<Array<{ filename: string; content: s
   }
   // Web 环境下尝试读取控制台日志（基本不可行），返回空
   return [];
+}
+
+// ==================== WebDAV 云同步 ====================
+
+export interface RemoteSyncMeta {
+  revision: number;
+  updatedAt: string;
+  projectUpdatedAt: string;
+  device: string;
+  mediaCount: number;
+  familyName?: string;
+  projectSize: number;
+}
+
+/** 云端根目录下的一个家谱 */
+export interface RemoteProject extends RemoteSyncMeta {
+  /** 云端子目录名，同时是该家谱的同步 ID */
+  dir: string;
+}
+
+export interface SyncPushReport {
+  revision: number;
+  uploadedMedia: number;
+  skippedMedia: number;
+  totalMedia: number;
+  uploadedBytes: number;
+  projectBytes: number;
+  remoteProjectUpdatedAt: string;
+  remoteExisted: boolean;
+}
+
+export interface SyncPullReport {
+  downloadedMedia: number;
+  skippedMedia: number;
+  totalRemoteMedia: number;
+  projectBytes: number;
+  backupPath: string;
+  remote: RemoteSyncMeta;
+}
+
+/** 测试 WebDAV 连接，并自动创建云端目录 */
+export async function webdavTest(
+  server: string,
+  username: string,
+  password: string,
+  remoteDir: string
+): Promise<string> {
+  const api = await getTauriApi();
+  if (!api) throw new Error('云同步仅在桌面版可用');
+  return api.invoke<string>('webdav_test', { server, username, password, remoteDir });
+}
+
+/** 读取云端同步元信息（不下载正文） */
+export async function webdavRemoteMeta(
+  server: string,
+  username: string,
+  password: string,
+  remoteDir: string
+): Promise<RemoteSyncMeta | null> {
+  const api = await getTauriApi();
+  if (!api) return null;
+  return api.invoke<RemoteSyncMeta | null>('webdav_remote_meta', {
+    server,
+    username,
+    password,
+    remoteDir,
+  });
+}
+
+/** 列出云端根目录下的家谱（换新电脑时用于恢复） */
+export async function webdavListProjects(
+  server: string,
+  username: string,
+  password: string,
+  remoteRoot: string
+): Promise<RemoteProject[]> {
+  const api = await getTauriApi();
+  if (!api) return [];
+  return api.invoke<RemoteProject[]>('webdav_list_projects', {
+    server,
+    username,
+    password,
+    remoteRoot,
+  });
+}
+
+/** 上传：project.yrp + 云端缺失的媒体文件 */export async function webdavPush(
+  server: string,
+  username: string,
+  password: string,
+  remoteDir: string,
+  workspacePath: string,
+  device?: string
+): Promise<SyncPushReport> {
+  const api = await getTauriApi();
+  if (!api) throw new Error('云同步仅在桌面版可用');
+  return api.invoke<SyncPushReport>('webdav_push', {
+    server,
+    username,
+    password,
+    remoteDir,
+    workspacePath,
+    device: device || null,
+  });
+}
+
+/** 下载：备份本地 project.yrp 后覆盖，并补齐缺失媒体 */
+export async function webdavPull(
+  server: string,
+  username: string,
+  password: string,
+  remoteDir: string,
+  workspacePath: string
+): Promise<SyncPullReport> {
+  const api = await getTauriApi();
+  if (!api) throw new Error('云同步仅在桌面版可用');
+  return api.invoke<SyncPullReport>('webdav_pull', {
+    server,
+    username,
+    password,
+    remoteDir,
+    workspacePath,
+  });
+}
+
+// ==================== 统一软件设置（settings.json） ====================
+
+export interface WebdavPullProgress {
+  stage: string;
+  current: number;
+  total: number;
+  fileName: string;
+  message: string;
+}
+
+/** 监听 WebDAV 拉取实时进度事件，返回取消监听函数 */
+export async function listenWebdavPullProgress(
+  callback: (progress: WebdavPullProgress) => void
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  try {
+    const { listen } = await import('@tauri-apps/api/event');
+    return await listen<WebdavPullProgress>('webdav-pull-progress', (event) => {
+      callback(event.payload);
+    });
+  } catch {
+    return () => {};
+  }
+}
+
+/** 监听 WebDAV 上传实时进度事件，返回取消监听函数 */
+export async function listenWebdavPushProgress(
+  callback: (progress: WebdavPullProgress) => void
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  try {
+    const { listen } = await import('@tauri-apps/api/event');
+    return await listen<WebdavPullProgress>('webdav-push-progress', (event) => {
+      callback(event.payload);
+    });
+  } catch {
+    return () => {};
+  }
+}
+
+export interface AppSettingsPayload {
+  sync?: any;
+  prefs?: any;
+  recentProjects?: any[];
+  [key: string]: any;
+}
+
+/** 从 settings.json 读取配置（WebDAV 密码已由后端自动解密） */
+export async function loadAppSettings(): Promise<AppSettingsPayload | null> {
+  const api = await getTauriApi();
+  if (!api) return null;
+  return api.invoke<AppSettingsPayload>('load_app_settings');
+}
+
+/** 保存配置到 settings.json（WebDAV 密码由后端进行高强度加密混淆后落盘） */
+export async function saveAppSettings(settings: AppSettingsPayload): Promise<AppSettingsPayload | null> {
+  const api = await getTauriApi();
+  if (!api) return null;
+  return api.invoke<AppSettingsPayload>('save_app_settings', { settings });
+}
+
+/** 获取 settings.json 文件的物理绝对路径 */
+export async function getSettingsFilePath(): Promise<string | null> {
+  const api = await getTauriApi();
+  if (!api) return null;
+  return api.invoke<string>('get_settings_file_path');
+}
+
+export interface FolderStats {
+  totalBytes: number;
+  fileCount: number;
+  dirCount: number;
+}
+
+/** 递归统计工作区文件夹的总字节大小、文件数量与目录数量 */
+export async function getWorkspaceStats(workspacePath: string): Promise<FolderStats> {
+  const api = await getTauriApi();
+  if (!api || !workspacePath) return { totalBytes: 0, fileCount: 0, dirCount: 0 };
+  try {
+    return await api.invoke<FolderStats>('get_workspace_stats', { workspacePath });
+  } catch (err) {
+    console.warn('获取工作区统计信息失败:', err);
+    return { totalBytes: 0, fileCount: 0, dirCount: 0 };
+  }
+}
+/**
+ * 从磁盘永久删除家谱工作区文件夹或 .yrj 文件
+ */
+export async function deleteProjectWorkspaceFromDisk(path: string): Promise<void> {
+  const api = await getTauriApi();
+  if (!api) throw new Error('未运行在 Tauri 环境中');
+  return api.invoke<void>('delete_project_workspace_from_disk', { path });
 }

@@ -18,7 +18,7 @@ export default defineConfig({
     watch: {
       // 不监听 Rust 构建产物：全量重编译时 cargo 独占锁定 app_lib.dll，
       // Vite 恰好 watch 到会抛 EBUSY 导致 dev server 崩溃（EBUSY: resource busy or locked）
-      ignored: ['**/src-tauri/target/**', '**/output/**', '**/_temp/**'],
+      ignored: ['**/src-tauri/target/**', '**/src-tauri/resources/**', '**/output/**', '**/_temp/**'],
     },
   },
   build: {
