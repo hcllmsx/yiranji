@@ -905,6 +905,31 @@ fn get_workspace_stats(workspace_path: String) -> Result<FolderStats, String> {
 }
 
 #[tauri::command]
+async fn webdav_push(
+    app: tauri::AppHandle,
+    server: String,
+    username: String,
+    password: String,
+    remote_dir: String,
+    workspace_path: String,
+    device: Option<String>,
+) -> Result<webdav::PushReport, String> {
+    use tauri::Emitter;
+    webdav::webdav_push_with_progress(
+        server,
+        username,
+        password,
+        remote_dir,
+        workspace_path,
+        device,
+        |progress| {
+            let _ = app.emit("webdav-push-progress", &progress);
+        },
+    )
+    .await
+}
+
+#[tauri::command]
 async fn webdav_pull(
     app: tauri::AppHandle,
     server: String,
@@ -985,7 +1010,7 @@ pub fn run() {
             webdav::webdav_test,
             webdav::webdav_remote_meta,
             webdav::webdav_list_projects,
-            webdav::webdav_push,
+            webdav_push,
             webdav_pull,
             settings::load_app_settings,
             settings::save_app_settings,

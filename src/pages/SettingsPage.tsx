@@ -14,6 +14,7 @@ import {
   webdavRemoteMeta,
   getWorkspaceStats,
   listenWebdavPullProgress,
+  listenWebdavPushProgress,
   type WebdavPullProgress,
   type RemoteSyncMeta,
   type FolderStats,
@@ -116,7 +117,7 @@ export default function SettingsPage() {
   const [pullElapsed, setPullElapsed] = useState(0);
 
   useEffect(() => {
-    if (syncBusy !== 'pull') {
+    if (syncBusy !== 'pull' && syncBusy !== 'push') {
       setPullElapsed(0);
       return;
     }
@@ -126,7 +127,8 @@ export default function SettingsPage() {
     const timer = window.setInterval(tick, 500);
     let active = true;
     let unlisten: (() => void) | undefined;
-    listenWebdavPullProgress((p) => {
+    const subscribe = syncBusy === 'push' ? listenWebdavPushProgress : listenWebdavPullProgress;
+    subscribe((p) => {
       if (active) setPullProgress(p);
     }).then((stop) => {
       if (active) unlisten = stop;
@@ -565,6 +567,13 @@ export default function SettingsPage() {
       remoteMeta.projectUpdatedAt > (project.meta.updatedAt || '');
 
     const executePush = async () => {
+      setPullProgress({
+        stage: 'init',
+        current: 0,
+        total: 0,
+        fileName: 'project.yrp',
+        message: '正在连接云端并准备上传目录…',
+      });
       setSyncBusy('push');
       try {
         const report = await syncPushToCloud();
@@ -668,19 +677,19 @@ export default function SettingsPage() {
       )}
 
       {/* ---- 密码验证对话框 ---- */}
-      {dialog && (
-        <div className="custom-dialog-overlay" onClick={closeDialog}>
+      {(dialog || syncBusy === 'push' || syncBusy === 'pull') && (
+        <div className="custom-dialog-overlay" onClick={() => !syncBusy && closeDialog()}>
           <div
             className="custom-dialog-box"
             style={{
               position: 'relative',
               overflow: 'hidden',
-              minHeight: syncBusy === 'pull' ? '340px' : undefined,
+              minHeight: syncBusy === 'pull' || syncBusy === 'push' ? '340px' : undefined,
               transition: 'min-height 0.2s ease',
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            {syncBusy === 'pull' && (
+            {(syncBusy === 'pull' || syncBusy === 'push') && (
               <div className="saveas-loading-overlay" role="status" aria-live="polite">
                 <div className="saveas-loading-inner">
                   <div className="saveas-loading-emblem" aria-hidden="true">
@@ -688,7 +697,9 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="saveas-loading-title">
-                    正在从云端拉取「{project.meta.familyName || '当前家谱'}」
+                    {syncBusy === 'push'
+                      ? `正在上传「${project.meta.familyName || '当前家谱'}」到云端`
+                      : `正在从云端拉取「${project.meta.familyName || '当前家谱'}」`}
                   </div>
 
                   {pullProgress.fileName && (
@@ -707,11 +718,13 @@ export default function SettingsPage() {
                   </div>
 
                   <p className="saveas-loading-hint">
-                    已用 {pullElapsed} 秒 · 档案包含较多照片、音频时，拉取需要一些时间，请稍候
+                    已用 {pullElapsed} 秒 · 档案包含较多照片、音频时，{syncBusy === 'push' ? '上传' : '拉取'}需要一些时间，请稍候
                   </p>
                 </div>
               </div>
             )}
+            {dialog && (
+              <>
             <div className="custom-dialog-header">
               <span className="custom-dialog-icon">🔒</span>
               <span className="custom-dialog-title">{dialog.title}</span>
@@ -744,6 +757,8 @@ export default function SettingsPage() {
                 {dialog.confirmText || '确认取消'}
               </button>
             </div>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -642,7 +642,6 @@ pub async fn webdav_remote_meta(
 }
 
 /// 上传：project.yrp 全量 + 云端缺失的媒体文件
-#[tauri::command]
 pub async fn webdav_push(
     server: String,
     username: String,
@@ -651,6 +650,31 @@ pub async fn webdav_push(
     workspace_path: String,
     device: Option<String>,
 ) -> Result<PushReport, String> {
+    webdav_push_with_progress(
+        server,
+        username,
+        password,
+        remote_dir,
+        workspace_path,
+        device,
+        |_| {},
+    )
+    .await
+}
+
+/// 带实时进度回调的云端上传实现
+pub async fn webdav_push_with_progress<F>(
+    server: String,
+    username: String,
+    password: String,
+    remote_dir: String,
+    workspace_path: String,
+    device: Option<String>,
+    mut on_progress: F,
+) -> Result<PushReport, String>
+where
+    F: FnMut(PullProgressEvent),
+{
     let server = normalize_server(&server);
     let dir = normalize_dir(&remote_dir);
     let client = build_client()?;
@@ -660,6 +684,14 @@ pub async fn webdav_push(
     let project_bytes =
         fs::read(&project_path).map_err(|e| format!("读取本地 project.yrp 失败：{}", e))?;
     let project_content = project_file::read_project(&project_path)?;
+
+    on_progress(PullProgressEvent {
+        stage: "init".to_string(),
+        current: 0,
+        total: 0,
+        file_name: project_file::PROJECT_FILE_NAME.to_string(),
+        message: "正在连接云端并准备上传目录…".to_string(),
+    });
 
     ensure_dir(&client, &server, &username, &password, &dir).await?;
 
@@ -683,6 +715,15 @@ pub async fn webdav_push(
         &format!("{}/media", dir),
     )
     .await?;
+
+    on_progress(PullProgressEvent {
+        stage: "scan".to_string(),
+        current: 0,
+        total: 0,
+        file_name: "media/".to_string(),
+        message: "正在比对云端与本地媒体文件…".to_string(),
+    });
+
     // 递归读取云端媒体：头像在 media/avatar/{circle,rect}/ 下，只列一层会漏
     let remote_files = list_tree(&client, &media_url, &username, &password, 4).await?;
     // 按「相对路径」判断是否已存在，子目录里的同名文件（cropped.jpg）不会被误判
@@ -693,8 +734,10 @@ pub async fn webdav_push(
     let mut skipped = 0usize;
     let mut uploaded_bytes = 0u64;
     let mut ensured_dirs: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut to_upload: Vec<&(String, PathBuf, u64)> = Vec::new();
 
-    for (rel, path, size) in &local_files {
+    for item in &local_files {
+        let (rel, _, size) = item;
         let base_name = rel.rsplit('/').next().unwrap_or(rel);
         if has_filter && !referenced.contains(base_name) && !referenced.contains(rel.as_str()) {
             continue;
@@ -706,6 +749,22 @@ pub async fn webdav_push(
                 continue;
             }
         }
+        to_upload.push(item);
+    }
+
+    let total_files = to_upload.len() + 1;
+    for (idx, (rel, path, size)) in to_upload.iter().enumerate() {
+        let current = idx + 1;
+        on_progress(PullProgressEvent {
+            stage: "media".to_string(),
+            current,
+            total: total_files,
+            file_name: rel.clone(),
+            message: format!(
+                "共 {} 个文件 · 正在上传第 {} / {} 个文件…",
+                total_files, current, total_files
+            ),
+        });
         // 先补建云端子目录，否则严格实现的 WebDAV 服务会以 409（父目录不存在）拒绝 PUT
         if let Some((sub, _)) = rel.rsplit_once('/') {
             let remote_sub = format!("{}/media/{}", dir, sub);
@@ -720,6 +779,17 @@ pub async fn webdav_push(
             uploaded_bytes += size;
         }
     }
+
+    on_progress(PullProgressEvent {
+        stage: "project".to_string(),
+        current: total_files,
+        total: total_files,
+        file_name: project_file::PROJECT_FILE_NAME.to_string(),
+        message: format!(
+            "共 {} 个文件 · 正在上传第 {} / {} 个文件…",
+            total_files, total_files, total_files
+        ),
+    });
 
     // 工程数据最后写，保证任何时刻云端都有一份自洽的快照
     let project_url = join_url(&server, &format!("{}/project.yrp", dir));

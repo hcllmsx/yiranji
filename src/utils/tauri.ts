@@ -518,6 +518,21 @@ export async function listenWebdavPullProgress(
   }
 }
 
+/** 监听 WebDAV 上传实时进度事件，返回取消监听函数 */
+export async function listenWebdavPushProgress(
+  callback: (progress: WebdavPullProgress) => void
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  try {
+    const { listen } = await import('@tauri-apps/api/event');
+    return await listen<WebdavPullProgress>('webdav-push-progress', (event) => {
+      callback(event.payload);
+    });
+  } catch {
+    return () => {};
+  }
+}
+
 export interface AppSettingsPayload {
   sync?: any;
   prefs?: any;
