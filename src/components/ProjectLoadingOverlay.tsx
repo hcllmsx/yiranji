@@ -63,8 +63,7 @@ export default function ProjectLoadingOverlay() {
         </div>
 
         <p className="project-loading-hint">
-          {elapsed >= 1 ? `已用 ${elapsed} 秒 · ` : ''}
-          档案包含较多照片、音频时，载入会需要一些时间，请稍候
+          已用 {elapsed} 秒 · 档案包含较多照片、音频时，载入会需要一些时间，请稍候
         </p>
       </div>
     </div>

@@ -9,6 +9,7 @@ import {
   type AssociatedFileRequest,
 } from '../utils/tauri';
 import { lockBodyScroll } from '../utils/bodyScrollLock';
+import { beginProjectLoad, endProjectLoad } from '../store/projectLoadingStore';
 import './AssociatedFileHandler.css';
 
 interface PasswordRequest {
@@ -26,7 +27,6 @@ export default function AssociatedFileHandler() {
   const handledIds = useRef(new Set<number>());
   const openQueue = useRef<Promise<void>>(Promise.resolve());
   const passwordResolver = useRef<((password: string | null) => void) | null>(null);
-  const [openingPath, setOpeningPath] = useState<string | null>(null);
   const [passwordRequest, setPasswordRequest] = useState<PasswordRequest | null>(null);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -49,7 +49,6 @@ export default function AssociatedFileHandler() {
     let currentPath = path;
     let password: string | undefined;
     while (true) {
-      setOpeningPath(currentPath);
       setErrorMessage(null);
       try {
         const current = useFamilyStore.getState();
@@ -68,11 +67,17 @@ export default function AssociatedFileHandler() {
           continue;
         }
 
-        const opened = await current.openProjectFromFile(currentPath, password);
-        if (opened) navigate('/tree');
-        completePath(path, requestId);
-        return;
+        await beginProjectLoad(currentPath, isPackage ? 'unpack' : 'load');
+        try {
+          const opened = await current.openProjectFromFile(currentPath, password);
+          if (opened) navigate('/tree');
+          completePath(path, requestId);
+          return;
+        } finally {
+          endProjectLoad();
+        }
       } catch (error) {
+        endProjectLoad(true);
         const message = errorText(error);
         if (message === 'PASSWORD_REQUIRED_OR_INCORRECT') {
           const workspacePath = (error as { workspacePath?: string }).workspacePath;
@@ -91,8 +96,6 @@ export default function AssociatedFileHandler() {
         setErrorMessage(`打开工程失败：${message}`);
         completePath(path, requestId);
         return;
-      } finally {
-        setOpeningPath(null);
       }
     }
   }, [completePath, navigate, requestPassword]);
@@ -135,7 +138,7 @@ export default function AssociatedFileHandler() {
     };
   }, [openPath]);
 
-  const hasModal = Boolean(openingPath || passwordRequest || errorMessage);
+  const hasModal = Boolean(passwordRequest || errorMessage);
   useEffect(() => {
     if (!hasModal) return;
     return lockBodyScroll();
@@ -159,21 +162,6 @@ export default function AssociatedFileHandler() {
 
   return (
     <>
-      {openingPath && !passwordRequest && !errorMessage && (
-        <div className="modal-overlay">
-          <div className="modal associated-open-dialog" role="status" aria-live="polite">
-            <div className="modal-header"><h3>正在打开工程</h3></div>
-            <div className="modal-body">
-              <p className="associated-open-path">{openingPath}</p>
-              <div className="associated-open-loading">
-                <span className="route-loading-spinner" />
-                <span>正在读取工程与媒体索引…</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {passwordRequest && (
         <div className="modal-overlay">
           <div className="modal associated-open-dialog" role="dialog" aria-modal="true" aria-labelledby="associated-password-title">
