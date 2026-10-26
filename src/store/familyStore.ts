@@ -38,6 +38,15 @@ import { rebaseMediaPathsToWorkspace } from '../utils/projectPortable';
 import { getSyncSettings, isSyncConfigured, remoteDirFor, ensureSyncKey } from '../utils/cloudSync';
 import { saveRecentProjectsList } from '../utils/appSettings';
 import { migrateProjectData, type MigrationReport } from '../utils/dataMigration';
+import {
+  useProjectLoadingStore,
+  type ProjectLoadStage,
+} from './projectLoadingStore';
+
+/** 更新全屏载入画面的阶段文案（未显示时自动忽略） */
+function setLoadStage(stage: ProjectLoadStage) {
+  useProjectLoadingStore.getState().setStage(stage);
+}
 
 // ==================== 持久化工具 ====================
 
@@ -349,6 +358,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
 
       // 1. 如果用户打开的是 .yrj 文件包，则自动解压至同级同名的工作区文件夹下
       if (path.toLowerCase().endsWith('.yrj')) {
+        setLoadStage('unpack');
         const normalized = path.replace(/\\/g, '/');
         const lastSlash = normalized.lastIndexOf('/');
         const parentDir = lastSlash !== -1 ? normalized.substring(0, lastSlash) : '.';
@@ -361,17 +371,20 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
       } else {
         // 普通文件夹 / 任意 .json：先规范化成真正包含工程数据的目录
         // （容忍用户选了上一级目录，或把导出的「某某族谱.json」直接丢进文件夹）
+        setLoadStage('load');
         workspacePath = await resolveWorkspaceDir(path);
       }
       workspacePath = normalizeNativePath(workspacePath);
 
       // 2. 读取 YRP；旧版标准 JSON 会由后端先备份再自动转换。
+      setLoadStage('load');
       const loaded = await loadProjectFile(workspacePath);
       // 格式迁移在密码校验前已由后端完成，备份提示不能因解锁失败而丢失。
       if (loaded.formatBackupPath) {
         set({ formatBackupPath: loaded.formatBackupPath });
       }
       const rawProject = JSON.parse(loaded.json) as FamilyProject;
+      setLoadStage('prepare');
       const migration = migrateProjectData(rawProject);
       let project = migration.project;
       const migrationReport = migration.report;
@@ -412,6 +425,7 @@ export const useFamilyStore = create<FamilyStore>((set, get) => ({
         }
       }
       if (rebasedCount > 0 || migrationReport.versionBumped) {
+        setLoadStage('save');
         await saveProjectFile(workspacePath, JSON.stringify(project, null, 2));
       }
 

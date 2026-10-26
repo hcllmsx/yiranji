@@ -16,6 +16,7 @@ import {
 import { getSyncSettings, saveSyncSettings, isSyncConfigured, formatSyncTime } from '../utils/cloudSync';
 import { getDefaultSaveDir, shouldShowSampleEntry, dismissSampleEntry } from '../utils/appPrefs';
 import { subscribeSettings } from '../utils/appSettings';
+import { beginProjectLoad, endProjectLoad } from '../store/projectLoadingStore';
 import './WelcomePage.css';
 
 export default function WelcomePage() {
@@ -186,7 +187,8 @@ export default function WelcomePage() {
       const path = await selectFilePathForOpen();
       if (!path) return; // 用户取消
 
-      if (path.endsWith('.yrj')) {
+      const isPackage = path.toLowerCase().endsWith('.yrj');
+      if (isPackage) {
         const isEncrypted = await isYrjFileEncrypted(path);
         if (isEncrypted) {
           setPendingOpenPath(path);
@@ -197,12 +199,14 @@ export default function WelcomePage() {
         }
       }
 
-      // 如果直接是文件夹，或者未加密的.yrj
+      // 解包 .yrj / 读取工作区期间显示全屏载入画面，避免界面看起来像卡死
+      await beginProjectLoad(path, isPackage ? 'unpack' : 'load');
       try {
         const success = await openProjectFromFile(path);
         if (success) navigate('/tree');
       } catch (err: any) {
         if (err.message === 'PASSWORD_REQUIRED_OR_INCORRECT') {
+          endProjectLoad(true);
           // 优先使用已解包的工作区路径，避免用 .yrj 路径重试时触发二次解包
           setPendingOpenPath(err.workspacePath || path);
           setUnlockPassword('');
@@ -211,8 +215,11 @@ export default function WelcomePage() {
         } else {
           throw err;
         }
+      } finally {
+        endProjectLoad();
       }
     } catch (e) {
+      endProjectLoad(true);
       showCustomAlert(`打开工程文件失败: ${e}`);
     }
   };
@@ -223,20 +230,26 @@ export default function WelcomePage() {
       const path = await selectProjectParentDir(selectedParentDir || getDefaultSaveDir() || null);
       if (!path) return; // 用户取消
 
+      await beginProjectLoad(path, 'load');
       try {
         const success = await openProjectFromFile(path);
         if (success) navigate('/tree');
       } catch (err: any) {
         if (err.message === 'PASSWORD_REQUIRED_OR_INCORRECT') {
+          endProjectLoad(true);
           setPendingOpenPath(err.workspacePath || path);
           setUnlockPassword('');
           setUnlockError('');
           setShowPasswordModal(true);
         } else {
+          endProjectLoad(true);
           showCustomAlert(`该文件夹不是有效的以苒纪家谱工作区（${err.message || err}）`);
         }
+      } finally {
+        endProjectLoad();
       }
     } catch (e) {
+      endProjectLoad(true);
       showCustomAlert(`打开家谱文件夹失败: ${e}`);
     }
   };
@@ -324,10 +337,16 @@ export default function WelcomePage() {
     try {
       dismissSampleEntry(__APP_VERSION__);
       setShowSampleButton(false);
-      const path = await installSampleWorkspace();
-      const success = await openProjectFromFile(path);
-      if (success) navigate('/tree');
+      await beginProjectLoad('示例家谱', 'install');
+      try {
+        const path = await installSampleWorkspace();
+        const success = await openProjectFromFile(path);
+        if (success) navigate('/tree');
+      } finally {
+        endProjectLoad();
+      }
     } catch (e) {
+      endProjectLoad(true);
       showCustomAlert(`打开示例家谱失败: ${e}`);
     }
   };
@@ -336,10 +355,15 @@ export default function WelcomePage() {
   const handleUnlockConfirm = async () => {
     if (!pendingOpenPath) return;
     setUnlockError('');
+    const targetPath = pendingOpenPath;
     const trimmedPassword = unlockPassword.trim();
+    await beginProjectLoad(
+      targetPath,
+      targetPath.toLowerCase().endsWith('.yrj') ? 'unpack' : 'load'
+    );
     try {
       const success = await openProjectFromFile(
-        pendingOpenPath,
+        targetPath,
         trimmedPassword,
         false
       );
@@ -349,12 +373,15 @@ export default function WelcomePage() {
         navigate('/tree');
       }
     } catch (e: any) {
+      endProjectLoad(true);
       console.error('解锁失败详情:', e);
       if (e.message === 'PASSWORD_REQUIRED_OR_INCORRECT') {
         setUnlockError('密码错误，请重新输入');
       } else {
         setUnlockError(`解锁失败: ${e.message || e}`);
       }
+    } finally {
+      endProjectLoad();
     }
   };
 
@@ -393,8 +420,9 @@ export default function WelcomePage() {
     if (item.filePath && isTauri()) {
       // 本地文件模式
       try {
+        const isPackage = item.filePath.toLowerCase().endsWith('.yrj');
         // 只有以 .yrj 结尾的文件包才需要做加密检测及密码弹窗
-        if (item.filePath.endsWith('.yrj')) {
+        if (isPackage) {
           const isEncrypted = await isYrjFileEncrypted(item.filePath);
           if (isEncrypted) {
             setPendingOpenPath(item.filePath);
@@ -405,12 +433,14 @@ export default function WelcomePage() {
           }
         }
 
+        await beginProjectLoad(item.filePath, isPackage ? 'unpack' : 'load');
         try {
           // 从最近项目进入，直接跳过密码核验，免除重复输入！
           const success = await openProjectFromFile(item.filePath, undefined, true);
           if (success) navigate('/tree');
         } catch (err: any) {
           if (err.message === 'PASSWORD_REQUIRED_OR_INCORRECT') {
+            endProjectLoad(true);
             setPendingOpenPath(err.workspacePath || item.filePath);
             setUnlockPassword('');
             setUnlockError('');
@@ -418,8 +448,11 @@ export default function WelcomePage() {
           } else {
             throw err;
           }
+        } finally {
+          endProjectLoad();
         }
       } catch (e) {
+        endProjectLoad(true);
         showCustomAlert(`打开最近的工程文件失败，文件可能已被移动或删除: ${e}`);
       }
     } else {

@@ -213,7 +213,7 @@ fn get_project_updated_at(path: &Path) -> Option<String> {
 
 /// 把随安装包发布的示例家谱释放到应用数据目录（可读写）。
 /// 如果目标已存在，但安装包中的示例家谱更新（updatedAt 不同）或 force 为 true，则自动覆盖更新。
-#[tauri::command]
+#[tauri::command(async)]
 fn install_sample_workspace(app: tauri::AppHandle, force: Option<bool>) -> Result<String, String> {
     let resource_dir = app
         .path()
@@ -307,14 +307,14 @@ fn create_unique_project_workspace(
     Ok(candidate)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn save_project_file(workspace_path: String, json_content: String) -> Result<(), String> {
     project_file::write_workspace_project(Path::new(&workspace_path), &json_content)?;
     Ok(())
 }
 
 /// 数据关系迁移前，在工作区保留一份 YRP 快照。
-#[tauri::command]
+#[tauri::command(async)]
 fn backup_project_file(workspace_path: String, label: String) -> Result<String, String> {
     let dir = PathBuf::from(&workspace_path);
     let source = dir.join(project_file::PROJECT_FILE_NAME);
@@ -419,7 +419,7 @@ fn find_project_file(dir: &Path) -> Option<PathBuf> {
     None
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn resolve_workspace_dir(path: String) -> Result<String, String> {
     let p = PathBuf::from(&path);
     if p.is_file() {
@@ -560,7 +560,7 @@ fn migrate_legacy_project_with_backup(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn load_project_file(
     app: tauri::AppHandle,
     workspace_path: String,
@@ -733,7 +733,7 @@ fn create_import_staging_dir(workspace: &Path) -> Result<PathBuf, String> {
     unreachable!()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn unpack_yrj(
     yrj_path: String,
     parent_dir: String,
