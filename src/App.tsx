@@ -4,7 +4,6 @@ import WelcomePage from './pages/WelcomePage';
 import MainLayout from './components/MainLayout';
 import UpdateDialog from './components/UpdateDialog';
 import WhatsNewDialog from './components/WhatsNewDialog';
-import MajorUpdateNotice from './components/MajorUpdateNotice';
 import AssociatedFileHandler from './components/AssociatedFileHandler';
 import FormatMigrationDialog from './components/FormatMigrationDialog';
 import ProjectLoadingOverlay from './components/ProjectLoadingOverlay';
@@ -78,7 +77,6 @@ function App() {
       <FormatMigrationDialog />
       <UpdateDialog />
       <WhatsNewDialog />
-      <MajorUpdateNotice />
       <Routes>
         <Route path="/" element={<WelcomePage />} />
         <Route element={<MainLayout />}>

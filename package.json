@@ -1,7 +1,7 @@
 {
   "name": "yiranji",
   "private": true,
-  "version": "26.10.26",
+  "version": "26.10.29",
   "description": "以苒纪 — 一款现代化的家谱管理桌面应用，基于 Tauri v2 + React 构建。",
   "author": "莫莫先生",
   "license": "GPL-3.0-only",
@@ -23,7 +23,7 @@
   "dependencies": {
     "@jsquash/jpeg": "^1.6.0",
     "@jsquash/oxipng": "^2.3.0",
-    "@tauri-apps/plugin-shell": "^2.5.0",
+    "@tauri-apps/plugin-shell": "^2.6.0",
     "@types/dagre": "^0.7.54",
     "@types/uuid": "^10.0.0",
     "@xyflow/react": "^12.11.1",

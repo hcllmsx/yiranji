@@ -1076,7 +1076,7 @@
   transition: opacity 0.25s ease, filter 0.25s ease, box-shadow 0.25s ease;
 }
 
-/* 卡片长方形浅黄色（#FFFFE0）水波脉冲动效：
+/* 卡片长方形浅橙黄色（#FFD166）水波脉冲动效：
  * 采用经典的 easeOutCubic (三次贝塞尔缓动) 自然物理水波消散曲线，全程无生硬减速卡顿；
  * z-index: -1 确保从卡片底层冲出，完全不遮挡正面的男女色彩线条；
  * 配合 CSS 变量 --pulse-delay 沿关系路径顺滑传递。
@@ -1089,7 +1089,7 @@
   right: -2px;
   bottom: -2px;
   border-radius: calc(var(--radius-md) + 2px);
-  border: 1.5px solid #FFFFE0;
+  border: 1.5px solid #FFD166;
   pointer-events: none;
   z-index: -1;
   animation: card-rect-sonar-pulse 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
@@ -1100,11 +1100,11 @@
   0% {
     transform: scale(1);
     opacity: 0.9;
-    box-shadow: 0 0 8px rgba(255, 255, 224, 0.85);
+    box-shadow: 0 0 8px rgba(255, 209, 102, 0.85);
   }
   100% {
     transform: scale(1.11, 1.22);
     opacity: 0;
-    box-shadow: 0 0 26px rgba(255, 255, 224, 0);
+    box-shadow: 0 0 26px rgba(255, 209, 102, 0);
   }
 }

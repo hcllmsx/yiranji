@@ -75,18 +75,6 @@ export function resetSampleEntry() {
   saveAppPrefs(prefs);
 }
 
-/** 重大更新提示：本机还没读过才需要弹（读过一次后永久不再打扰） */
-export function shouldShowMajorUpdateNotice(): boolean {
-  return !getAppPrefs().majorUpdateNoticeDismissed;
-}
-
-/** 标记重大更新提示已读 */
-export function dismissMajorUpdateNotice() {
-  const prefs = { ...getAppPrefs() };
-  prefs.majorUpdateNoticeDismissed = true;
-  saveAppPrefs(prefs);
-}
-
 /** 设置是否在首页显示示例家谱按钮 */
 export function setSampleEntryEnabled(enabled: boolean, currentAppVersion: string) {
   const prefs = { ...getAppPrefs() };

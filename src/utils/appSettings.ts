@@ -12,8 +12,6 @@ export interface AppPrefs {
   sampleDismissedVersion?: string;
   /** 上一次启动时的软件版本号；用于判断是否刚升级，决定要不要展示本次更新内容 */
   lastRunVersion?: string;
-  /** 重大更新提示已读：本次大改版启动后只提示一次，读过就不再弹 */
-  majorUpdateNoticeDismissed?: boolean;
 }
 
 export interface SyncSettings {
