@@ -62,7 +62,7 @@ function App() {
     checkForUpdate()
       .then((result) => {
         if (result.status === 'update-available' && result.latestVersion) {
-          useUpdateStore.getState().openUpdateDialog(result.latestVersion, result.sourceIndex);
+          useUpdateStore.getState().openUpdateDialog(result.latestVersion);
         }
       })
       .catch(() => {

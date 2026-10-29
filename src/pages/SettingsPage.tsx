@@ -435,7 +435,7 @@ export default function SettingsPage() {
     try {
       const result = await checkForUpdate();
       if (result.status === 'update-available' && result.latestVersion) {
-        useUpdateStore.getState().openUpdateDialog(result.latestVersion, result.sourceIndex);
+        useUpdateStore.getState().openUpdateDialog(result.latestVersion);
       } else if (result.status === 'up-to-date') {
         showToast(`当前已是最新版本（v${__APP_VERSION__}）`, 'success');
       } else {

@@ -8,11 +8,11 @@ import './UpdateDialog.css';
 // 以苒纪 — 发现新版本弹窗
 //
 // 挂载于 App 根层，由 updateStore 控制显隐；
-// 打开后按同源策略拉取 release-notes.json 展示本版更新内容，
+// 打开后展示与该 Release tag 同源的更新内容（来自发布正文），
 // 拉取失败时回退为通用说明，不阻塞更新提示。
 
 export default function UpdateDialog() {
-  const { open, latestVersion, sourceIndex, closeUpdateDialog } = useUpdateStore();
+  const { open, latestVersion, closeUpdateDialog } = useUpdateStore();
   const [notes, setNotes] = useState<ReleaseNotes | null>(null);
   const [notesLoading, setNotesLoading] = useState(false);
 
@@ -23,7 +23,7 @@ export default function UpdateDialog() {
     setNotes(null);
     setNotesLoading(true);
 
-    fetchReleaseNotes(latestVersion, sourceIndex)
+    fetchReleaseNotes(latestVersion)
       .then((result) => {
         if (cancelled) return;
         setNotes(result);
@@ -36,7 +36,7 @@ export default function UpdateDialog() {
     return () => {
       cancelled = true;
     };
-  }, [open, latestVersion, sourceIndex]);
+  }, [open, latestVersion]);
 
   if (!open) return null;
 

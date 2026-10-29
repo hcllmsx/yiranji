@@ -1,22 +1,20 @@
 // 以苒纪 — 检查更新
 //
-// 版本源为 GitHub 仓库根目录的 VERSION 文件（纯文本版本号，如 26.9.28）。
+// 版本源为 GitHub 上最新的正式 Release（releases/latest），取其 tag 名（v26.10.29）。
+// 只有打了 tag 并成功发布 Release 才算正式发版，因此改完 VERSION 但还没打 tag 时
+// 不会提示更新，避免把用户引到一个尚不存在的发布页。
+// 更新内容直接取该 Release 正文里「更新内容」一节（与发布公告同源，天然对应 tag）。
+//
 // 考虑到国内网络访问 GitHub 不稳定，默认优先走 gh-proxy 加速镜像，
 // 镜像不通再回退 GitHub 原始源；全部失败时返回 failed 状态，
 // 由调用方决定是否提示（静默检查不提示，手动检查才 toast）。
-//
-// 更新内容来自 release-notes.json：由 scripts/sync-version.mjs 从 CHANGELOG.md
-// 当前版本一节生成，只含单版本的结构化数据，客户端无需解析 Markdown。
 
-/** 源根目录：镜像优先，最后回退 GitHub 官方（同源策略靠同一数组派生 URL 保证） */
+/** Release 信息接口：镜像优先，最后回退 GitHub 官方（同源策略靠同一数组派生 URL 保证） */
 const SOURCES = [
-  'https://gh-proxy.com/https://raw.githubusercontent.com/hcllmsx/yiranji/refs/heads/main',
-  'https://gh-proxy.org/https://raw.githubusercontent.com/hcllmsx/yiranji/refs/heads/main',
-  'https://raw.githubusercontent.com/hcllmsx/yiranji/refs/heads/main',
+  'https://gh-proxy.com/https://api.github.com/repos/hcllmsx/yiranji/releases/latest',
+  'https://gh-proxy.org/https://api.github.com/repos/hcllmsx/yiranji/releases/latest',
+  'https://api.github.com/repos/hcllmsx/yiranji/releases/latest',
 ];
-
-const VERSION_URLS = SOURCES.map((src) => `${src}/VERSION`);
-const RELEASE_NOTES_URLS = SOURCES.map((src) => `${src}/release-notes.json`);
 
 /** 最新版下载页 */
 export const RELEASES_URL = 'https://github.com/hcllmsx/yiranji/releases/latest';
@@ -30,8 +28,6 @@ export interface UpdateCheckResult {
   status: UpdateStatus;
   /** 远端最新版本号（仅成功时有效） */
   latestVersion?: string;
-  /** 成功返回版本号的源索引（用于更新说明的同源拉取） */
-  sourceIndex?: number;
   /** 失败原因（仅 failed 时有效） */
   error?: string;
 }
@@ -46,6 +42,9 @@ export interface ReleaseNotes {
   sections: ReleaseNoteSection[];
 }
 
+/** 最近一次成功拉取的 Release，用于打开弹窗时免去二次联网 */
+let cachedRelease: ReleaseNotes | null = null;
+
 /**
  * 带超时的文本抓取
  */
@@ -57,7 +56,7 @@ async function fetchTextWithTimeout(url: string, timeoutMs: number): Promise<str
     if (!resp.ok) {
       throw new Error(`HTTP ${resp.status}`);
     }
-    return (await resp.text()).trim();
+    return await resp.text();
   } finally {
     clearTimeout(timer);
   }
@@ -79,84 +78,116 @@ export function isNewerVersion(a: string, b: string): boolean {
 }
 
 /**
- * 检查更新：依次尝试镜像与原始源获取远端 VERSION，与本地版本比较。
+ * 解析 Release 正文里「更新内容」一节：只认 --- 分隔线之前的 ### 小标题与 - 条目，
+ * 其后的网盘二维码引导不属于更新说明。
+ */
+function parseReleaseBody(body: string): ReleaseNoteSection[] {
+  const sections: ReleaseNoteSection[] = [];
+  let current: ReleaseNoteSection | null = null;
+
+  for (const raw of body.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line === '---') break;
+    if (!line) continue;
+
+    const heading = /^###\s+(.+)$/.exec(line);
+    if (heading) {
+      current = { title: heading[1].trim(), items: [] };
+      sections.push(current);
+      continue;
+    }
+
+    const item = /^[-*]\s+(.+)$/.exec(line);
+    if (item) {
+      if (!current) {
+        current = { title: '更新内容', items: [] };
+        sections.push(current);
+      }
+      current.items.push(item[1].trim());
+    }
+  }
+
+  return sections.filter((section) => section.items.length > 0);
+}
+
+/**
+ * 从 Release JSON 中提取版本号与更新说明；tag 形如 v26.10.29，也兼容不带 v 的写法。
+ */
+function parseReleaseJson(text: string): { version: string; sections: ReleaseNoteSection[] } | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== 'object') return null;
+
+  const record = data as { tag_name?: unknown; body?: unknown };
+  if (typeof record.tag_name !== 'string') return null;
+
+  const version = record.tag_name.trim().replace(/^v/i, '');
+  // 校验内容形如 26.9.28，防止拿到代理错误页
+  if (!/^\d+(\.\d+)+$/.test(version)) return null;
+
+  const sections = typeof record.body === 'string' ? parseReleaseBody(record.body) : [];
+  return { version, sections };
+}
+
+/**
+ * 依次尝试镜像与原始源获取最新正式 Release。
+ */
+async function fetchLatestRelease(): Promise<{ release: ReleaseNotes | null; error: string }> {
+  let lastError = '';
+
+  for (const url of SOURCES) {
+    try {
+      const text = await fetchTextWithTimeout(url, SOURCE_TIMEOUT_MS);
+      const parsed = parseReleaseJson(text);
+      if (parsed) {
+        return { release: parsed, error: '' };
+      }
+      lastError = '版本源返回内容异常';
+    } catch (err) {
+      lastError = (err as Error)?.message || '网络错误';
+      console.warn(`检查更新：版本源不可达（${url}）`, err);
+    }
+  }
+
+  return { release: null, error: lastError || '无法连接更新服务器' };
+}
+
+/**
+ * 检查更新：以远端最新 Release 的 tag 版本与本地版本比较。
  * 本地版本由 vite define 注入（构建时读取仓库根目录 VERSION 文件）。
  */
 export async function checkForUpdate(): Promise<UpdateCheckResult> {
   const localVersion = __APP_VERSION__;
 
-  let latestVersion = '';
-  let latestSourceIndex = -1;
-  let lastError = '';
-
-  for (let i = 0; i < VERSION_URLS.length; i++) {
-    try {
-      const text = await fetchTextWithTimeout(VERSION_URLS[i], SOURCE_TIMEOUT_MS);
-      // 校验内容形如 26.9.28，防止拿到代理错误页
-      if (/^\d+(\.\d+)+$/.test(text)) {
-        latestVersion = text;
-        latestSourceIndex = i;
-        break;
-      }
-      lastError = '版本源返回内容异常';
-    } catch (err) {
-      lastError = (err as Error)?.message || '网络错误';
-      console.warn(`检查更新：版本源不可达（${VERSION_URLS[i]}）`, err);
-    }
+  const { release, error } = await fetchLatestRelease();
+  if (!release) {
+    return { status: 'failed', error };
   }
 
-  if (!latestVersion || latestSourceIndex < 0) {
-    return { status: 'failed', error: lastError || '无法连接更新服务器' };
-  }
+  cachedRelease = release;
 
   return {
-    status: isNewerVersion(latestVersion, localVersion) ? 'update-available' : 'up-to-date',
-    latestVersion,
-    sourceIndex: latestSourceIndex,
+    status: isNewerVersion(release.version, localVersion) ? 'update-available' : 'up-to-date',
+    latestVersion: release.version,
   };
 }
 
 /**
- * 获取当前版本的更新说明：优先从 VERSION 成功的同一个源拉取，
- * 同源失败才回退其他源；版本不匹配或内容不合法一律忽略。
+ * 获取指定版本的更新说明：命中缓存直接用，否则重新拉取 Release 后校验版本，
+ * 版本不一致一律视为不可用。
  */
-export async function fetchReleaseNotes(
-  latestVersion: string,
-  preferredSourceIndex = 0
-): Promise<ReleaseNotes | null> {
-  const order = [
-    preferredSourceIndex,
-    ...SOURCES.map((_, i) => i).filter((i) => i !== preferredSourceIndex),
-  ];
-
-  for (const index of order) {
-    try {
-      const text = await fetchTextWithTimeout(RELEASE_NOTES_URLS[index], SOURCE_TIMEOUT_MS);
-      const data = JSON.parse(text) as unknown;
-      if (!data || typeof data !== 'object') continue;
-
-      const record = data as { version?: unknown; sections?: unknown };
-      if (record.version !== latestVersion || !Array.isArray(record.sections)) continue;
-
-      const sections: ReleaseNoteSection[] = [];
-      for (const raw of record.sections) {
-        if (!raw || typeof raw !== 'object') continue;
-        const section = raw as { title?: unknown; items?: unknown };
-        if (typeof section.title !== 'string' || !Array.isArray(section.items)) continue;
-
-        const items = section.items.filter((item): item is string => typeof item === 'string');
-        if (items.length > 0) {
-          sections.push({ title: section.title, items });
-        }
-      }
-
-      if (sections.length > 0) {
-        return { version: latestVersion, sections };
-      }
-    } catch (err) {
-      console.warn(`检查更新：更新说明拉取失败（${RELEASE_NOTES_URLS[index]}）`, err);
-    }
+export async function fetchReleaseNotes(latestVersion: string): Promise<ReleaseNotes | null> {
+  let release = cachedRelease;
+  if (!release || release.version !== latestVersion) {
+    release = (await fetchLatestRelease()).release;
+  }
+  if (!release || release.version !== latestVersion || release.sections.length === 0) {
+    return null;
   }
 
-  return null;
+  return release;
 }

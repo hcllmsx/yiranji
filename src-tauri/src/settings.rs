@@ -130,6 +130,8 @@ pub struct AppPrefsConfig {
     pub tree_layout_mode: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sample_dismissed_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_run_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

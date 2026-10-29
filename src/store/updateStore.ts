@@ -9,19 +9,16 @@ import type { ReleaseNotes } from '../utils/updateChecker';
 
 interface UpdatePrompt {
   latestVersion: string;
-  sourceIndex: number;
 }
 
 interface UpdateDialogState {
   open: boolean;
   latestVersion: string;
-  /** 成功返回 VERSION 的源索引，用于同源拉取 release-notes.json */
-  sourceIndex: number;
   /** 非空时展示「本次更新内容」弹窗 */
   whatsNewNotes: ReleaseNotes | null;
   /** 「本次更新内容」未关闭时发现的新版本，等它关闭后再弹 */
   pendingUpdate: UpdatePrompt | null;
-  openUpdateDialog: (latestVersion: string, sourceIndex?: number) => void;
+  openUpdateDialog: (latestVersion: string) => void;
   closeUpdateDialog: () => void;
   openWhatsNew: (notes: ReleaseNotes) => void;
   closeWhatsNew: () => void;
@@ -30,16 +27,15 @@ interface UpdateDialogState {
 export const useUpdateStore = create<UpdateDialogState>((set, get) => ({
   open: false,
   latestVersion: '',
-  sourceIndex: 0,
   whatsNewNotes: null,
   pendingUpdate: null,
 
-  openUpdateDialog: (latestVersion, sourceIndex = 0) => {
+  openUpdateDialog: (latestVersion) => {
     if (get().whatsNewNotes) {
-      set({ pendingUpdate: { latestVersion, sourceIndex } });
+      set({ pendingUpdate: { latestVersion } });
       return;
     }
-    set({ open: true, latestVersion, sourceIndex });
+    set({ open: true, latestVersion });
   },
   closeUpdateDialog: () => set({ open: false }),
 
@@ -56,7 +52,6 @@ export const useUpdateStore = create<UpdateDialogState>((set, get) => ({
         pendingUpdate: null,
         open: true,
         latestVersion: pending.latestVersion,
-        sourceIndex: pending.sourceIndex,
       });
       return;
     }
